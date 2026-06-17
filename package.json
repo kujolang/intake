@@ -4,6 +4,31 @@
   "description": "Local-first source-agnostic business intake for the Kujo ecosystem.",
   "type": "module",
   "private": true,
+  "author": {
+    "name": "Robert DeVore",
+    "email": "deviodigital@gmail.com"
+  },
+  "homepage": "https://github.com/kujolang/intake#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+ssh://git@github.com/kujolang/intake.git"
+  },
+  "bugs": {
+    "url": "https://github.com/kujolang/intake/issues"
+  },
+  "files": [
+    "bin/",
+    "src/",
+    "docs/",
+    "scripts/",
+    "README.md",
+    "CHANGELOG.md",
+    "LICENSE"
+  ],
+  "sideEffects": false,
+  "publishConfig": {
+    "access": "public"
+  },
   "bin": {
     "intake": "bin/intake.js"
   },

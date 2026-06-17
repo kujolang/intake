@@ -40,12 +40,14 @@ Production-oriented safeguards already in place:
 - Retention and safe purge controls.
 - Native signed Slack Events API receiver.
 - Provider-aware GitHub, Jira, Linear, and ClickUp issue webhook receivers.
+- Approved GitHub issue comments behind policy and human approval gates.
 - Source templates for common systems.
 - Deterministic audit/error/action/sync logs with redaction.
 - Bounded dashboard and webhook request bodies.
 - Constant-time webhook token checks.
 - Safe record ID and raw-payload path handling.
 - Optional HTTPS for explicitly non-local dashboard deployments.
+- Compact item index dedupe path for fast repeated no-op syncs.
 - Default policy blocks direct `send_response`.
 
 Before calling it enterprise-ready for a team or customer deployment, validate the roadmap in [docs/production-readiness-roadmap.md](docs/production-readiness-roadmap.md).
@@ -108,10 +110,14 @@ The dashboard includes:
 - Source management for email, file, webhook, and manual sources.
 - Settings and policy editing for local operators.
 - Email readiness checks for config, IMAP, and SMTP.
-- Persisted source health for last readiness test and last sync.
+- Persisted source health for last readiness test, last sync, and bounded test/sync history.
 - Intake item review and queue/tag controls.
 - Draft/action approval workflow.
 - Learnings, rules, and audit views.
+- Approval audit summaries by operator and action type.
+- Policy dry-runs before approving or changing action gates.
+- Per-source test/sync status with pending action feedback.
+- Runtime dashboard token display and rotation.
 - Auto-action kill switch.
 
 ## Sources
@@ -130,7 +136,7 @@ Available adapters:
 
 For multiple inboxes, add one source per inbox, for example `support-email`, `sales-email`, and `billing-email`, each with its own username, secret reference, default queue, and sync cadence.
 
-For GitHub, Jira, Linear, or ClickUp, use the provider source type so Intake can normalize issue IDs, titles, bodies, project metadata, states, and provider tags.
+For GitHub, Jira, Linear, or ClickUp, use the provider source type so Intake can normalize issue IDs, titles, bodies, project metadata, states, and provider tags. GitHub sources also accept `X-Hub-Signature-256` webhook signatures using the configured webhook secret. GitHub can also post approved `comment_issue` actions when the source has a repository and an API token reference.
 
 List setup templates:
 
@@ -218,6 +224,8 @@ No email is sent by `source test`.
 
 Source test and sync status are saved on the source record so operators can see the last readiness result and last sync count in the dashboard.
 
+Email and `.eml` file sources store attachment metadata by default. Set `--quarantine-attachments` when adding a source, or enable Quarantine attachments in the dashboard source editor, to write attachment bytes into `.intake/raw/attachments/` and keep item records metadata-only.
+
 ## Live Email Smoke Test
 
 Use this path before relying on a live inbox:
@@ -248,6 +256,7 @@ Policy and safety docs:
 - [Prompt-injection defense](docs/prompt-injection-defense.md)
 - [Adapter authoring guide](docs/adapter-authoring.md)
 - [Release checklist](docs/release-checklist.md)
+- [Performance baselines](docs/performance-baselines.md)
 - [Enterprise readiness checklist](docs/enterprise-readiness-checklist.md)
 - [End-to-end tutorial](docs/end-to-end-tutorial.md)
 - [Why Intake showcases Kujo](docs/why-kujo-showcase.md)
@@ -255,6 +264,7 @@ Policy and safety docs:
 - [Attachment policy](docs/attachment-policy.md)
 - [Restore drill](docs/restore-drill.md)
 - [Example packs](docs/example-packs.md)
+- [Next production readiness sweep](docs/next-production-readiness-sweep.md)
 
 ## Storage
 
@@ -388,7 +398,7 @@ npm run verify
 npm run bench -- --items 1000 --logs 100000 --fileRows 1000
 ```
 
-The built-in eval suite covers routing and safety cases from the original build prompt, including refunds, legal threats, prompt injection, Slack-style bug reports, webhook payloads, learning generation, and auto-action policy checks.
+The built-in test and eval suite covers routing and safety cases from the original build prompt, including refunds, legal threats, prompt injection, Slack-style bug reports, webhook payloads, generated high-volume sync dedupe, learning generation, dashboard policy previews, and auto-action policy checks.
 
 ## Project Structure
 

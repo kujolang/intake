@@ -7,7 +7,7 @@ Use this checklist before publishing or presenting Kujo Intake as a release cand
 - Run `npm run verify`.
 - Confirm unit, smoke, eval, and audit gates pass.
 - Confirm `node bin/intake.js doctor` passes against a clean demo store.
-- Confirm root files are intentional: `README.md`, `CHANGELOG.md`, `package.json`, `package-lock.json`, `.gitignore`.
+- Confirm root files are intentional: `README.md`, `CHANGELOG.md`, `LICENSE`, `package.json`, `package-lock.json`, `.gitignore`, `.github/`, `bin/`, `src/`, `tests/`, `scripts/`, and `docs/`.
 
 ## Source Gate
 
@@ -46,6 +46,8 @@ Use this checklist before publishing or presenting Kujo Intake as a release cand
 ## Packaging Gate
 
 - Confirm package name, description, keywords, license, repository, and bin entry.
+- Run `npm pack --dry-run`.
+- Confirm package contents include only the intended release files from `package.json#files`.
 - Confirm whether `"private": true` should remain.
 - Confirm changelog entry and version number.
 - Tag the release only after the above gates pass.

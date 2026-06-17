@@ -48,13 +48,28 @@ Current status: Intake is ready for local-first live mailbox smoke testing, demo
 - Added bounded pagination for action, learning, and dashboard log list APIs.
 - Added dashboard settings editing for auto-actions, AI enablement/provider, and export paths.
 - Added dashboard policy editing with structured validation.
+- Added dashboard policy dry-run controls for proposed actions.
+- Added approval audit summaries by operator and action type.
 - Added native provider-aware issue webhook adapters for GitHub, Jira, Linear, and ClickUp.
 - Added shared adapter contract tests for normalized intake items.
 - Added benchmark harness for large local stores, audit logs, and repeated sync dedupe.
+- Added incremental item index updates for item save/delete paths.
+- Added generated high-volume source sync fixture tests with repeated sync dedupe coverage.
+- Added per-source dashboard pending states for test/sync actions and richer last-sync detail.
+- Added bounded source test/sync history on source records and dashboard detail views.
+- Added runtime dashboard token display and rotation controls.
+- Added dashboard accessibility assertions for icon-only controls and operator tabs.
+- Added GitHub webhook HMAC signature verification for issue intake.
+- Added optional attachment quarantine for email/file `.eml` sources.
+- Hardened email source readiness checks so provider socket errors report cleanly instead of crashing the CLI.
+- Added GitHub issue comment writeback for approved `comment_issue` actions behind source policy and human approval gates.
+- Added package author, repository, bug tracker, homepage, publish files, and public publish metadata while keeping `"private": true`.
+- Added compact item index dedupe keys and skipped full index rebuilds on no-op source syncs.
+- Published local performance baselines in [performance-baselines.md](performance-baselines.md).
 - Added restore drill documentation.
 - Expanded agent-facing docs with stable records, allowed operations, and blocked operations.
 - Added example packs for agencies, SaaS support, solo founders, and internal ops.
-- Verified dashboard Settings and Sources screens in-browser with no console errors.
+- Verified dashboard Settings, Sources, policy dry-run, and Actions approval audit screens in-browser with no console errors.
 - Reworked the README into a clearer showcase and operator guide.
 
 ## P0: Live Source Confidence
@@ -68,8 +83,8 @@ Current status: Intake is ready for local-first live mailbox smoke testing, demo
 
 ## P0: Packaging And Distribution
 
-- Remove `"private": true` only after package metadata, license, publish workflow, and release policy are ready.
-- Run the GitHub Actions workflow once the project is inside a Git worktree and remote repository.
+- Keep `"private": true` until live-source gates and remote CI are proven.
+- Run the GitHub Actions workflow in the remote repository and capture the result before tagging or publishing.
 
 ## P0: Data Lifecycle
 
@@ -82,30 +97,26 @@ Current status: Intake is ready for local-first live mailbox smoke testing, demo
   - run readiness test
   - send/sync first test item
 - Add screenshots for empty states after demo data is removed.
-- Add detail views for source test history and last sync status.
-- Add per-source sync buttons with spinner/error state.
-- Add dashboard token rotation/display controls.
-- Add accessibility checks to the smoke flow.
+- Expand accessibility checks into a browser-driven smoke flow.
 
 ## P1: Adapter Expansion
 
-- Add provider signature verification where each issue tracker offers stable signing headers.
-- Add remote writeback actions for providers where appropriate, such as comments or labels, behind human approval gates.
+- Add additional provider signature verification where Jira, Linear, or ClickUp offer stable signing headers.
+- Add remote writeback actions for Jira, Linear, and ClickUp where appropriate, such as comments or labels, behind human approval gates.
 
 ## P1: Policy And Approvals
 
-- Add dashboard policy dry-run controls for proposed actions.
-- Add approval audit views by operator and action type.
+- Add deeper approval audit filters and export by operator, source, and action type.
 
 ## P1: Performance
 
-- Add incremental index updates for item status/queue/tag changes.
-- Add large mailbox sync tests using generated fixtures.
-- Run benchmark scripts and publish baseline timings for 1k items, 10k items, 100k log lines, and repeated sync dedupe.
+- Add dashboard API warm-index latency measurements.
+- Decide whether actions and learnings need compact indexes like items.
+- Add 100k audit log baseline in a longer-running benchmark job.
 
 ## P1: Security
 
-- Add optional attachment quarantine after metadata-only policy is validated.
+- Add attachment quarantine dashboard review/restore controls after operator flow is designed.
 
 ## P2: AI And Language Showcase
 
@@ -131,5 +142,5 @@ Start with:
 1. Deepen dashboard first-run setup into a guided wizard.
 2. Run a real PrivateEmail smoke test with a disposable mailbox.
 3. Add restore drill screenshots.
-4. Add source health history and per-source sync progress to the dashboard.
-5. Run CI/release packaging once this project is inside a Git worktree.
+4. Add source health history beyond latest status and capture operator screenshots.
+5. Run CI/release packaging in the remote repository and capture the result.

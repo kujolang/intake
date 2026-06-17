@@ -1,0 +1,64 @@
+# Next Production Readiness Sweep
+
+This is the next-session work queue after the latest local verification sweep. Intake is stronger, but it should not be described as enterprise deployment-ready until the external validation items are finished.
+
+## P0: Prove Live Email
+
+- Create or use a disposable PrivateEmail mailbox.
+- Add the mailbox as an `email` source using `.intake/.env` or macOS Keychain.
+- Run `intake doctor`.
+- Run `intake source test SOURCE_ID` and capture config, IMAP, and SMTP readiness.
+- Send a harmless test email to the mailbox.
+- Run `intake sync SOURCE_ID` twice and verify the second sync does not duplicate the message.
+- Create, approve, and run a `draft_response` action.
+- Confirm the approved draft is appended to the remote Drafts mailbox.
+- Confirm direct `send_response` remains blocked by default policy.
+- Add a redacted live-source transcript to docs.
+
+## P0: Package And CI
+
+- Decide whether this package is ready to remove `"private": true`.
+- Reconfirm package metadata before release: author, repository, homepage, bugs, license, bin, files, engines, publish config, and changelog.
+- Run the GitHub Actions verify workflow in the remote repository.
+- Run `npm pack --dry-run` and compare package contents against the release checklist.
+- Confirm root files are intentional: `README.md`, `CHANGELOG.md`, `LICENSE`, `package.json`, `package-lock.json`, `.github/`, `bin/`, `src/`, `tests/`, `scripts/`, and `docs/`.
+
+## P0: Operator Evidence
+
+- Capture restore drill screenshots or terminal captures.
+- Capture empty-dashboard screenshots after demo data is cleared.
+- Capture a live source setup walkthrough after the dashboard wizard stabilizes.
+
+## P1: Dashboard
+
+- Deepen first-run setup into a wizard that configures a source, validates secrets, tests readiness, and guides the first sync.
+- Add browser-driven accessibility smoke checks for desktop and mobile widths.
+- Add deeper approval audit filtering by operator, source, action type, and date.
+
+## P1: Security
+
+- Add attachment quarantine dashboard review/restore controls.
+- Add provider-native signature verification for Jira, Linear, and ClickUp where the provider offers stable signing headers.
+- Add dashboard controls for enforcing HTTPS/token posture when binding non-locally.
+
+## P1: Provider Writeback
+
+- Add approved comment or label actions for Jira/Linear/ClickUp where appropriate.
+- Add a live GitHub writeback smoke test against a disposable issue.
+- Keep every remote write behind policy preview, human approval, and audit logs.
+- Add provider-specific troubleshooting hints for failed writeback actions.
+
+## P1: Performance Evidence
+
+- Add dashboard API warm-index latency measurements.
+- Add a 100k audit log baseline in a longer-running benchmark job.
+- Decide whether actions/learnings need compact indexes like items.
+
+## P2: Kujo Language Showcase
+
+- Decide how Intake should demonstrate Kujo directly:
+  - policy packs as Kujo scripts
+  - adapter orchestration as Kujo workflows
+  - Intake as a Kujo example package
+  - side-by-side JavaScript and Kujo examples
+- Add a concise architecture walkthrough aimed at new Kujo users.
