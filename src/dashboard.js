@@ -11,7 +11,7 @@ import { initStore, listActionIndex, listActions, listItemIndex, listLearningInd
 import { evaluatePolicy } from "./policy.js";
 import { appendSourceSyncHistory, appendSourceTestHistory } from "./source-history.js";
 import { approveAction, classifyAndSave, createLearning, proposeDraft, rejectAction, runAction, setAutoActions, syncAll } from "./workflow.js";
-import { isoNow, parseCsv, readStreamText, uniq } from "./util.js";
+import { isoNow, parseCsv, readStreamText, timingSafeEqualString, uniq } from "./util.js";
 
 const LOGS = ["sync", "normalize", "classify", "policy", "actions", "audit", "errors"];
 const MAX_DASHBOARD_BODY_BYTES = 1024 * 1024;
@@ -64,14 +64,31 @@ export async function startDashboard(root, options = {}) {
   await initStore(root);
   const host = options.host || "127.0.0.1";
   const localOnly = ["127.0.0.1", "localhost", "::1"].includes(host);
+  const tlsEnabled = Boolean(options.tlsCert && options.tlsKey);
   if (!localOnly && options.allowNonLocal !== true) {
     throw new Error("dashboard binds to localhost by default; pass --allow-non-local with --tls-cert and --tls-key for non-local binding");
   }
-  if (!localOnly && (!options.tlsCert || !options.tlsKey)) {
+  if (!localOnly && !tlsEnabled) {
     throw new Error("non-local dashboard binding requires --tls-cert and --tls-key");
+  }
+  const tokenSource = options.token ? "cli" : process.env.INTAKE_DASHBOARD_TOKEN ? "env" : "runtime";
+  if (!localOnly && tokenSource === "runtime") {
+    throw new Error("non-local dashboard binding requires --token or INTAKE_DASHBOARD_TOKEN");
   }
   const port = Number(options.port ?? 8787);
   let activeToken = options.token || process.env.INTAKE_DASHBOARD_TOKEN || randomBytes(24).toString("base64url");
+  if (!localOnly && activeToken.length < 20) {
+    throw new Error("non-local dashboard token must be at least 20 characters");
+  }
+  let activeTokenSource = tokenSource;
+  const posture = () => dashboardSecurityPosture({
+    host,
+    port: server.address()?.port || port,
+    localOnly,
+    tlsEnabled,
+    token: activeToken,
+    tokenSource: activeTokenSource
+  });
 
   const handler = async (req, res) => {
     try {
@@ -84,8 +101,11 @@ export async function startDashboard(root, options = {}) {
       const body = await parseBody(req);
       const result = await routeApi(root, req.method, url, body, {
         dashboardToken: () => activeToken,
+        dashboardTokenSource: () => activeTokenSource,
+        securityPosture: posture,
         rotateDashboardToken: () => {
           activeToken = randomBytes(24).toString("base64url");
+          activeTokenSource = "runtime-rotated";
           return activeToken;
         }
       });
@@ -101,8 +121,8 @@ export async function startDashboard(root, options = {}) {
 
   await new Promise((resolve) => server.listen(port, host, resolve));
   await logEvent(root, "audit", { event_type: "dashboard_started", status: "ok" });
-  const protocol = options.tlsCert && options.tlsKey ? "https" : "http";
-  return { server, host, port: server.address().port, token: activeToken, url: `${protocol}://${host}:${server.address().port}/?token=${encodeURIComponent(activeToken)}` };
+  const protocol = tlsEnabled ? "https" : "http";
+  return { server, host, port: server.address().port, token: activeToken, posture: posture(), url: `${protocol}://${host}:${server.address().port}/?token=${encodeURIComponent(activeToken)}` };
 }
 
 async function routeApi(root, method, url, body, session = {}) {
@@ -152,8 +172,9 @@ async function routeApi(root, method, url, body, session = {}) {
   if (method === "POST" && parts[1] === "policy" && parts[2] === "preview") return policyPreview(root, body);
   if (method === "GET" && parts[1] === "logs") return { logs: await readLogs(root, url.searchParams.get("name") || "audit", listFiltersFrom(url)) };
   if (method === "GET" && parts[1] === "settings") return { settings: await loadSettings(root) };
-  if (method === "GET" && parts[1] === "dashboard-token") return dashboardTokenInfo(session.dashboardToken?.());
-  if (method === "POST" && parts[1] === "dashboard-token" && parts[2] === "rotate") return rotateDashboardToken(root, session.rotateDashboardToken);
+  if (method === "GET" && parts[1] === "dashboard-token") return dashboardTokenInfo(session.dashboardToken?.(), session.dashboardTokenSource?.());
+  if (method === "GET" && parts[1] === "security-posture") return session.securityPosture?.() || {};
+  if (method === "POST" && parts[1] === "dashboard-token" && parts[2] === "rotate") return rotateDashboardToken(root, session.rotateDashboardToken, session.dashboardTokenSource);
   if (method === "POST" && parts[1] === "settings" && parts[2] === "auto-actions") {
     return { settings: await setAutoActions(root, body.enabled === true) };
   }
@@ -350,20 +371,39 @@ async function updateSettings(root, body) {
   return { settings: next };
 }
 
-function dashboardTokenInfo(token) {
+function dashboardTokenInfo(token, source = process.env.INTAKE_DASHBOARD_TOKEN ? "env" : "runtime") {
   const text = String(token || "");
   return {
     token: text ? `${"*".repeat(Math.max(0, text.length - 6))}${text.slice(-6)}` : "",
     length: text.length,
-    ephemeral: process.env.INTAKE_DASHBOARD_TOKEN ? false : true
+    source,
+    ephemeral: source === "runtime" || source === "runtime-rotated"
   };
 }
 
-async function rotateDashboardToken(root, rotate) {
+function dashboardSecurityPosture({ host, port, localOnly, tlsEnabled, token, tokenSource }) {
+  const tokenInfo = dashboardTokenInfo(token, tokenSource);
+  const warnings = [
+    !localOnly && !tlsEnabled ? "non-local binding requires HTTPS" : null,
+    !localOnly && tokenSource === "runtime" ? "non-local binding requires an explicit stable token" : null,
+    !localOnly && tokenInfo.length < 20 ? "non-local dashboard token should be at least 20 characters" : null
+  ].filter(Boolean);
+  return {
+    host,
+    port,
+    local_only: localOnly,
+    https: tlsEnabled,
+    token: tokenInfo,
+    warnings,
+    ok: warnings.length === 0
+  };
+}
+
+async function rotateDashboardToken(root, rotate, source) {
   if (typeof rotate !== "function") throw new Error("dashboard token rotation is unavailable");
   const token = rotate();
   await logEvent(root, "audit", { event_type: "dashboard_token_rotated", status: "ok" });
-  return { token, token_info: dashboardTokenInfo(token) };
+  return { token, token_info: dashboardTokenInfo(token, source?.()) };
 }
 
 async function updatePolicies(root, body) {
@@ -501,7 +541,8 @@ async function parseBody(req) {
 
 function authorized(req, url, token) {
   const bearer = req.headers.authorization?.replace(/^Bearer\s+/i, "");
-  return bearer === token || req.headers["x-intake-token"] === token || url.searchParams.get("token") === token;
+  return [bearer, req.headers["x-intake-token"], url.searchParams.get("token")]
+    .some((candidate) => timingSafeEqualString(candidate, token));
 }
 
 function sendJson(res, value, status = 200) {
@@ -1291,7 +1332,7 @@ function dashboardHtml() {
       qs("#logsList").replaceChildren(...logs.map((log) => el("div", { class: "log-row", text: JSON.stringify(log) })));
     }
     async function renderSettings() {
-      const [{ settings }, { policies }, tokenInfo] = await Promise.all([api("/api/settings"), api("/api/policies"), api("/api/dashboard-token")]);
+      const [{ settings }, { policies }, tokenInfo, posture] = await Promise.all([api("/api/settings"), api("/api/policies"), api("/api/dashboard-token"), api("/api/security-posture")]);
       const auto = el("input", { id: "settingsAuto", type: "checkbox" });
       auto.checked = settings.auto_actions_enabled === true;
       const aiEnabled = el("input", { id: "settingsAiEnabled", type: "checkbox" });
@@ -1331,7 +1372,7 @@ function dashboardHtml() {
           el("b", { text: "Dashboard token" }),
           el("div", { class: "rowmeta" }, [
             pill("length " + tokenInfo.length),
-            pill(tokenInfo.ephemeral ? "runtime token" : "env token"),
+            pill(tokenInfo.source + " token"),
             pill(tokenInfo.token || "none")
           ]),
           el("div", { class: "muted", text: "Rotation is in-memory for the active dashboard session. Set INTAKE_DASHBOARD_TOKEN for a stable token on restart." }),
@@ -1343,6 +1384,15 @@ function dashboardHtml() {
             state.selectedView = "settings";
             setStatus("Dashboard token rotated");
           }, "danger", false, "key")])
+        ]),
+        el("div", { class: "source-row" }, [
+          el("b", { text: "Security posture" }),
+          el("div", { class: "rowmeta" }, [
+            pill(posture.local_only ? "local-only" : "non-local"),
+            pill(posture.https ? "https" : "http"),
+            pill(posture.ok ? "ok" : "review")
+          ]),
+          el("div", { class: "muted", text: posture.warnings?.length ? posture.warnings.join("; ") : "Dashboard binding and token posture meet the active runtime policy." })
         ]),
         el("div", { class: "source-row" }, [
           el("b", { text: "Policies" }),

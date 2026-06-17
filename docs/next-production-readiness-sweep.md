@@ -39,7 +39,6 @@ This is the next-session work queue after the latest local verification sweep. I
 
 - Add malware scanning and role-separated release controls for quarantined attachments after operator policy is defined.
 - Add provider-native signature verification for Jira, Linear, and ClickUp where the provider offers stable signing headers.
-- Add dashboard controls for enforcing HTTPS/token posture when binding non-locally.
 
 ## P1: Provider Writeback
 

@@ -128,7 +128,8 @@ async function cmdDoctor(root, flags) {
 async function cmdDashboard(root, flags) {
   const dashboard = await startDashboard(root, flags);
   console.log(`Dashboard: ${dashboard.url}`);
-  console.log("Bind: 127.0.0.1 only");
+  console.log(`Bind: ${dashboard.host}:${dashboard.port}${dashboard.posture.local_only ? " local-only" : " non-local"}`);
+  if (!dashboard.posture.ok) console.log(`Warnings: ${dashboard.posture.warnings.join("; ")}`);
   await new Promise(() => {});
 }
 

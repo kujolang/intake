@@ -47,6 +47,7 @@ Production-oriented safeguards already in place:
 - Constant-time webhook token checks.
 - Safe record ID and raw-payload path handling.
 - Optional HTTPS for explicitly non-local dashboard deployments.
+- Explicit stable dashboard token required for non-local dashboard deployments.
 - Compact item index dedupe path for fast repeated no-op syncs.
 - Default policy blocks direct `send_response`.
 
@@ -103,7 +104,7 @@ Start the dashboard:
 intake dashboard --port 8787
 ```
 
-The dashboard binds to `127.0.0.1`, prints a tokenized local URL, and uses the same `.intake/` storage, policy, action, learning, and audit-log workflow as the CLI. Set `INTAKE_DASHBOARD_TOKEN` or pass `--token` if you want a stable local token.
+The dashboard binds to `127.0.0.1`, prints a tokenized local URL, and uses the same `.intake/` storage, policy, action, learning, and audit-log workflow as the CLI. Set `INTAKE_DASHBOARD_TOKEN` or pass `--token` if you want a stable local token. Non-local dashboard binding requires `--allow-non-local`, TLS cert/key options, and an explicit token with at least 20 characters.
 
 The dashboard includes:
 
@@ -118,6 +119,7 @@ The dashboard includes:
 - Policy dry-runs before approving or changing action gates.
 - Per-source test/sync status with pending action feedback.
 - Runtime dashboard token display and rotation.
+- Runtime security posture display for local-only, HTTPS, and token source.
 - Auto-action kill switch.
 
 ## Sources

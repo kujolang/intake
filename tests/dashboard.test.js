@@ -43,6 +43,8 @@ test("dashboard refuses non-local binding without explicit TLS configuration", a
     await initStore(root);
     await assert.rejects(() => startDashboard(root, { host: "0.0.0.0", port: 0, token: "test-token" }), /localhost/);
     await assert.rejects(() => startDashboard(root, { host: "0.0.0.0", allowNonLocal: true, port: 0, token: "test-token" }), /tls-cert/);
+    await assert.rejects(() => startDashboard(root, { host: "0.0.0.0", allowNonLocal: true, port: 0, tlsCert: "cert.pem", tlsKey: "key.pem" }), /requires --token/);
+    await assert.rejects(() => startDashboard(root, { host: "0.0.0.0", allowNonLocal: true, port: 0, tlsCert: "cert.pem", tlsKey: "key.pem", token: "short" }), /at least 20 characters/);
   } finally {
     await rm(root, { recursive: true, force: true });
   }
@@ -157,10 +159,20 @@ test("dashboard can rotate its runtime API token", async () => {
     assert.equal(info.length, "test-token".length);
     assert.ok(info.token.endsWith("-token"));
     assert.ok(info.token.startsWith("*"));
+    assert.equal(info.source, "cli");
+    assert.equal(info.ephemeral, false);
+
+    const posture = await (await fetch(`${base}/api/security-posture`, { headers })).json();
+    assert.equal(posture.local_only, true);
+    assert.equal(posture.https, false);
+    assert.equal(posture.ok, true);
+    assert.deepEqual(posture.warnings, []);
 
     const rotated = await (await fetch(`${base}/api/dashboard-token/rotate`, { method: "POST", headers, body: "{}" })).json();
     assert.ok(rotated.token);
     assert.notEqual(rotated.token, "test-token");
+    assert.equal(rotated.token_info.source, "runtime-rotated");
+    assert.equal(rotated.token_info.ephemeral, true);
 
     const oldTokenResponse = await fetch(`${base}/api/summary`, { headers });
     assert.equal(oldTokenResponse.status, 401);

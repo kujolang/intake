@@ -12,6 +12,7 @@ Use this checklist to decide whether a specific Intake deployment is enterprise-
 - Retention rules are documented and tested with `--dry-run`.
 - Operators know how to use `intake purge items` safely.
 - Dashboard remains localhost-only unless HTTPS, auth, and deployment controls are explicitly reviewed.
+- Non-local dashboard deployments use TLS and an explicit stable token with at least 20 characters.
 - Secrets are referenced by `env:` or Keychain, not stored directly in source config.
 - Default policy still blocks direct `send_response`.
 - Audit/error logs are reviewed during launch.
@@ -26,6 +27,7 @@ Use this checklist to decide whether a specific Intake deployment is enterprise-
 - Policy changes have a review process.
 - Data retention has an owner and schedule.
 - Incident response includes source disable, auto-action disable, backup restore, and log review.
+- Operators can inspect dashboard security posture before using a shared deployment.
 
 ## Required Before Public Distribution
 

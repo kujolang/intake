@@ -13,6 +13,15 @@ The dashboard is local-only by default:
 - Emits no telemetry.
 - Uses the same `.intake/` files and workflow functions as the CLI.
 
+Non-local binding is intentionally stricter:
+
+- Requires `--allow-non-local`.
+- Requires `--tls-cert` and `--tls-key`.
+- Requires `--token` or `INTAKE_DASHBOARD_TOKEN`.
+- Requires the explicit token to be at least 20 characters.
+
+The Settings view includes a security posture panel showing whether the active runtime is local-only, HTTPS-backed, and token-hardened.
+
 Views:
 
 - Sources: guided first-source setup, add/edit email, file, webhook, Slack, GitHub, Jira, Linear, ClickUp, and manual sources; test sources; sync sources; enable or disable sources.
