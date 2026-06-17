@@ -395,11 +395,12 @@ Run the local quality gate:
 
 ```sh
 npm run verify
+npm run release:check
 npm run bench -- --items 1000 --logs 10000 --fileRows 1000 --actions 1000 --learnings 1000
 npm run bench -- --items 100 --logs 100000 --fileRows 0 --actions 0 --learnings 0 --dashboard false
 ```
 
-The built-in test and eval suite covers routing and safety cases from the original build prompt, including refunds, legal threats, prompt injection, Slack-style bug reports, webhook payloads, generated high-volume sync dedupe, learning generation, dashboard policy previews, and auto-action policy checks. `npm run verify` also runs the benchmark gate so warm dashboard and repeated-sync latency regressions fail locally before release.
+The built-in test and eval suite covers routing and safety cases from the original build prompt, including refunds, legal threats, prompt injection, Slack-style bug reports, webhook payloads, generated high-volume sync dedupe, learning generation, dashboard policy previews, and auto-action policy checks. `npm run verify` also runs the benchmark gate so warm dashboard and repeated-sync latency regressions fail locally before release. `npm run release:check` adds doctor and package dry-run checks on top of verify.
 
 ## Project Structure
 

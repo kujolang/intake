@@ -20,6 +20,7 @@ Current decision: keep Kujo Intake private while it is being hardened as a showc
 ## Publish Preconditions
 
 - `npm run verify` passes.
+- `npm run release:check` passes.
 - Release checklist passes.
 - `CHANGELOG.md` has a current entry.
 - `README.md` reflects the actual release state.
