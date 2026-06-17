@@ -4,7 +4,7 @@ Use this checklist to decide whether a specific Intake deployment is enterprise-
 
 ## Required For Any Production Deployment
 
-- `npm run verify` passes on the release artifact.
+- `npm run verify` passes on the release artifact, including tests, smoke, evals, benchmark gate, and audit.
 - `intake doctor` passes for the target `.intake/` store.
 - Every enabled source passes `intake source test SOURCE_ID`.
 - Backups are created, verified, restored in a drill, and stored outside the app host.
@@ -17,7 +17,7 @@ Use this checklist to decide whether a specific Intake deployment is enterprise-
 
 ## Required For Shared Team Use
 
-- CI runs `npm run verify`.
+- CI runs `npm run verify`, including the benchmark gate.
 - Release checklist passes.
 - Changelog is current.
 - Backup and restore ownership is assigned.
