@@ -27,11 +27,11 @@ This is the next-session work queue after the latest local verification sweep. I
 
 - Capture restore drill screenshots or terminal captures.
 - Capture empty-dashboard screenshots after demo data is cleared.
-- Capture a live source setup walkthrough after the dashboard wizard stabilizes.
+- Capture the guided dashboard source setup walkthrough with a disposable mailbox.
 
 ## P1: Dashboard
 
-- Deepen first-run setup into a wizard that configures a source, validates secrets, tests readiness, and guides the first sync.
+- Add a live-first-sync checklist state after disposable mailbox credentials are available.
 - Add browser-driven accessibility smoke checks for desktop and mobile widths.
 - Add deeper approval audit filtering by operator, source, action type, and date.
 

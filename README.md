@@ -107,7 +107,7 @@ The dashboard binds to `127.0.0.1`, prints a tokenized local URL, and uses the s
 
 The dashboard includes:
 
-- Source management for email, file, webhook, and manual sources.
+- Guided source setup and source management for email, file, webhook, Slack, GitHub, Jira, Linear, ClickUp, and manual sources.
 - Settings and policy editing for local operators.
 - Email readiness checks for config, IMAP, and SMTP.
 - Persisted source health for last readiness test, last sync, and bounded test/sync history.

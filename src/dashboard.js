@@ -532,13 +532,23 @@ function dashboardHtml() {
     .source-form { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin: 12px 0 14px; padding: 12px; border-radius: 8px; background: #ffffff; }
     .source-form .wide { grid-column: span 3; }
     .source-form label { display: grid; gap: 4px; color: var(--muted); font-size: 12px; }
+    .setup-guide { display: grid; gap: 10px; margin-bottom: 12px; }
+    .setup-steps { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
+    .setup-step { border: 1px solid var(--line); border-radius: 7px; padding: 9px; background: #fbfdfc; min-height: 74px; }
+    .setup-step b { display: block; font-size: 13px; margin-bottom: 4px; }
+    .setup-step.done { border-color: #b9d7c9; background: #eef8f3; }
+    .setup-step.warn { border-color: #e5cda8; background: #fff9ee; }
+    .preset-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
+    .preset-grid button { min-height: 72px; align-items: flex-start; justify-content: flex-start; text-align: left; display: grid; gap: 4px; }
+    .preset-grid small { color: var(--muted); line-height: 1.35; }
     .diagnostics { grid-column: span 3; border-top: 1px solid var(--line); padding-top: 10px; display: grid; gap: 8px; }
     .diagnostic-row { display: grid; grid-template-columns: 90px 80px 1fr; gap: 8px; align-items: center; font-size: 13px; }
     .diagnostic-row .ok { color: var(--ok); font-weight: 700; }
     .diagnostic-row .fail { color: var(--danger); font-weight: 700; }
     .diagnostic-row .skip { color: var(--muted); font-weight: 700; }
     @media (max-width: 1120px) { .app { grid-template-columns: 240px 1fr; } .sidepanel { grid-column: 1 / -1; border-left: 0; border-top: 1px solid var(--line); } }
-    @media (max-width: 760px) { .app, .split { display: block; } aside, main, .sidepanel { border: 0; border-bottom: 1px solid var(--line); } .list { margin-bottom: 12px; } .source-form { grid-template-columns: 1fr; } .source-form .wide, .diagnostics { grid-column: auto; } .diagnostic-row { grid-template-columns: 1fr; } }
+    @media (max-width: 960px) { .setup-steps, .preset-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+    @media (max-width: 760px) { .app, .split { display: block; } aside, main, .sidepanel { border: 0; border-bottom: 1px solid var(--line); } .list { margin-bottom: 12px; } .source-form, .setup-steps, .preset-grid { grid-template-columns: 1fr; } .source-form .wide, .diagnostics { grid-column: auto; } .diagnostic-row { grid-template-columns: 1fr; } }
   </style>
 </head>
 <body>
@@ -593,7 +603,7 @@ function dashboardHtml() {
     const tokenFromUrl = new URL(location.href).searchParams.get("token");
     if (tokenFromUrl) sessionStorage.setItem("intakeToken", tokenFromUrl);
     const token = sessionStorage.getItem("intakeToken") || "";
-    const state = { items: [], sources: [], summary: null, selectedQueue: "", selectedItemId: null, selectedItem: null, selectedSourceId: "", selectedView: "items", sourceDiagnostics: {}, pendingSourceAction: "", policyPreview: null };
+    const state = { items: [], sources: [], summary: null, selectedQueue: "", selectedItemId: null, selectedItem: null, selectedSourceId: "", selectedView: "items", sourceDiagnostics: {}, pendingSourceAction: "", policyPreview: null, setupProfile: "email" };
     const qs = (s) => document.querySelector(s);
     const el = (tag, attrs = {}, children = []) => {
       const node = document.createElement(tag);
@@ -788,7 +798,7 @@ function dashboardHtml() {
       state.selectedSourceId = selected ? selected.id : "";
       renderSourceEditor(selected);
       qs("#sourcesList").replaceChildren(
-        ...(state.sources.length === 0 ? [firstRunSourcesPanel()] : []),
+        state.sources.length === 0 ? firstRunSourcesPanel() : sourceSetupGuide(selected),
         ...state.sources.map((source) => {
           const pending = state.pendingSourceAction === source.id;
           return el("div", { class: "source-row" }, [
@@ -814,18 +824,123 @@ function dashboardHtml() {
       );
     }
     function firstRunSourcesPanel() {
-      return el("div", { class: "empty-state" }, [
-        el("b", { text: "Set up your first source" }),
-        el("div", { class: "muted", text: "Choose email for PrivateEmail, Slack for signed event intake, webhook for other systems, or manual for local testing." }),
-        el("div", { class: "controls" }, [
-          button("Email", () => { qs("#sourceType").value = "email"; qs("#sourceName").value = "Support Email"; qs("#sourceId").value = "support-email"; }, "", false, "mail"),
-          button("Slack", () => { qs("#sourceType").value = "slack"; qs("#sourceName").value = "Slack Support"; qs("#sourceId").value = "slack-support"; qs("#sourceWebhookPath").value = "/slack/events"; qs("#sourcePort").value = "8766"; }, "", false, "plug-connected"),
-          button("Manual", () => { qs("#sourceType").value = "manual"; qs("#sourceName").value = "Manual"; qs("#sourceId").value = "manual"; }, "", false, "plus")
+      return el("div", { class: "empty-state setup-guide" }, [
+        el("b", { text: "First source setup" }),
+        el("div", { class: "muted", text: "Pick the source profile, fill the required account or endpoint fields, save it, then run readiness before syncing real intake." }),
+        el("div", { class: "preset-grid" }, [
+          presetButton("PrivateEmail", "IMAP, SMTP, password env or Keychain", "email", "mail"),
+          presetButton("Slack", "Signed Events API receiver", "slack", "plug-connected"),
+          presetButton("GitHub", "Signed issue webhooks plus approved comments", "github", "plug"),
+          presetButton("Manual", "Local operator-created items", "manual", "plus")
+        ]),
+        el("div", { class: "setup-steps" }, [
+          setupStep("1", "Choose profile", "Select the closest intake source.", "done"),
+          setupStep("2", "Store secret", "Use .intake/.env or Keychain. Never paste passwords into config.", state.setupProfile === "manual" ? "done" : "warn"),
+          setupStep("3", "Save source", "Create the source record.", "warn"),
+          setupStep("4", "Test then sync", "Readiness must pass before live testing.", "warn")
         ])
       ]);
     }
+    function presetButton(title, description, profile, iconName) {
+      return button("", () => applySourcePreset(profile), "", false, iconName, [
+        el("b", { text: title }),
+        el("small", { text: description })
+      ]);
+    }
+    function sourcePresetValues(profile) {
+      const presets = {
+        email: {
+          sourceType: "email",
+          sourceName: "Support Email",
+          sourceId: "support-email",
+          sourceQueue: "support",
+          sourceUsername: "support@example.com",
+          sourcePasswordEnv: "INTAKE_SUPPORT_EMAIL_PASSWORD",
+          sourceImapHost: "mail.privateemail.com",
+          sourceImapPort: "993",
+          sourceMailbox: "INBOX",
+          sourceSmtpHost: "mail.privateemail.com",
+          sourceSmtpPort: "465",
+          sourceFrom: "support@example.com"
+        },
+        slack: {
+          sourceType: "slack",
+          sourceName: "Slack Support",
+          sourceId: "slack-support",
+          sourceQueue: "engineering",
+          sourceUsername: "",
+          sourcePasswordEnv: "INTAKE_SLACK_SIGNING_SECRET",
+          sourceWebhookPath: "/slack/events",
+          sourcePort: "8766"
+        },
+        github: {
+          sourceType: "github",
+          sourceName: "GitHub Issues",
+          sourceId: "github-issues",
+          sourceQueue: "engineering",
+          sourceUsername: "",
+          sourcePasswordEnv: "INTAKE_GITHUB_WEBHOOK_SECRET",
+          sourceApiTokenEnv: "INTAKE_GITHUB_API_TOKEN",
+          sourceWebhookPath: "/webhook/github",
+          sourceRepository: "owner/repo",
+          sourcePort: "8765"
+        },
+        manual: {
+          sourceType: "manual",
+          sourceName: "Manual",
+          sourceId: "manual",
+          sourceQueue: "inbox",
+          sourceUsername: "",
+          sourcePasswordEnv: "",
+          sourceWebhookPath: "",
+          sourceApiTokenEnv: "",
+          sourceRepository: ""
+        }
+      };
+      return presets[profile] || presets.email;
+    }
+    function applySourcePreset(profile) {
+      state.setupProfile = profile;
+      renderSources();
+      for (const [id, value] of Object.entries(sourcePresetValues(profile))) setControlValue(id, value);
+    }
+    function setControlValue(id, value) {
+      const node = qs("#" + id);
+      if (node) node.value = value;
+    }
+    function sourceSetupGuide(source) {
+      if (!source) return firstRunSourcesPanel();
+      const hasSecret = source.type === "manual" || source.type === "file" || Boolean(source.secret_ref || source.config?.token);
+      const tested = Boolean(source.last_test_result);
+      const ready = source.last_test_result?.ok === true;
+      const synced = Boolean(source.last_sync_result);
+      return el("div", { class: "source-row setup-guide" }, [
+        el("b", { text: "Source setup checklist" }),
+        el("div", { class: "muted", text: source.name + " is selected. Work left-to-right before sending real traffic into this source." }),
+        el("div", { class: "setup-steps" }, [
+          setupStep("1", "Saved", source.id, "done"),
+          setupStep("2", "Secret", hasSecret ? "Reference configured" : "Add env or Keychain secret", hasSecret ? "done" : "warn"),
+          setupStep("3", "Readiness", ready ? "Latest test passed" : (tested ? "Latest test needs attention" : "Run source test"), ready ? "done" : "warn"),
+          setupStep("4", "Sync", synced ? "Latest sync recorded" : "Run first sync after readiness", synced ? "done" : "warn")
+        ]),
+        el("div", { class: "controls" }, [
+          button("Edit selected", () => { state.selectedSourceId = source.id; renderSources(); }, "", false, "edit"),
+          button("Test readiness", () => sourcePost(source.id, "test", {}), ready ? "" : "primary", false, "shield"),
+          button("Sync source", () => sourcePost(source.id, "sync", {}), "", !ready && source.type === "email", "cloud-download"),
+          button("Open items", () => { state.selectedView = "items"; renderCurrent(); }, "", false, "inbox")
+        ])
+      ]);
+    }
+    function setupStep(number, title, detail, status) {
+      return el("div", { class: "setup-step " + (status || "") }, [
+        el("div", { class: "rowmeta" }, [pill(number)]),
+        el("b", { text: title }),
+        el("div", { class: "muted", text: detail })
+      ]);
+    }
     function renderSourceEditor(source) {
-      const type = source?.type || "email";
+      const defaults = source ? {} : sourcePresetValues(state.setupProfile);
+      const type = source?.type || defaults.sourceType || "email";
       const cfg = source?.config || {};
       const imap = cfg.imap || {};
       const smtp = cfg.smtp || {};
@@ -835,26 +950,26 @@ function dashboardHtml() {
       qs("#sourceEditor").replaceChildren(
         el("div", { class: "source-form" }, [
           label("Type", select("sourceType", ["email", "file", "webhook", "slack", "github", "jira", "linear", "clickup", "manual"], type)),
-          label("ID", input("sourceId", source?.id || "support-email", Boolean(source))),
-          label("Name", input("sourceName", source?.name || "Support Email")),
-          label("Username", input("sourceUsername", cfg.username || "")),
+          label("ID", input("sourceId", source?.id || defaults.sourceId || "support-email", Boolean(source))),
+          label("Name", input("sourceName", source?.name || defaults.sourceName || "Support Email")),
+          label("Username", input("sourceUsername", cfg.username || defaults.sourceUsername || "")),
           label("Secret storage", select("sourceSecretKind", ["env", "keychain"], secret.kind)),
-          label("Password env", input("sourcePasswordEnv", secret.env)),
+          label("Password env", input("sourcePasswordEnv", secret.env || defaults.sourcePasswordEnv || "")),
           label("Keychain service", input("sourceKeychainService", secret.service || "kujo-intake")),
           label("Keychain account", input("sourceKeychainAccount", secret.account || cfg.username || "")),
-          label("Default queue", input("sourceQueue", source?.default_queue || "inbox")),
-          label("IMAP host", input("sourceImapHost", imap.host || "mail.privateemail.com")),
-          label("IMAP port", input("sourceImapPort", imap.port || 993)),
-          label("Mailbox", input("sourceMailbox", cfg.mailbox || "INBOX")),
-          label("SMTP host", input("sourceSmtpHost", smtp.host || "mail.privateemail.com")),
-          label("SMTP port", input("sourceSmtpPort", smtp.port || 465)),
-          label("From", input("sourceFrom", cfg.from || cfg.username || "")),
+          label("Default queue", input("sourceQueue", source?.default_queue || defaults.sourceQueue || "inbox")),
+          label("IMAP host", input("sourceImapHost", imap.host || defaults.sourceImapHost || "mail.privateemail.com")),
+          label("IMAP port", input("sourceImapPort", imap.port || defaults.sourceImapPort || 993)),
+          label("Mailbox", input("sourceMailbox", cfg.mailbox || defaults.sourceMailbox || "INBOX")),
+          label("SMTP host", input("sourceSmtpHost", smtp.host || defaults.sourceSmtpHost || "mail.privateemail.com")),
+          label("SMTP port", input("sourceSmtpPort", smtp.port || defaults.sourceSmtpPort || 465)),
+          label("From", input("sourceFrom", cfg.from || cfg.username || defaults.sourceFrom || "")),
           label("File path", input("sourcePath", cfg.path || "")),
-          label("Webhook port", input("sourcePort", cfg.port || 8765)),
-          label("Webhook path", input("sourceWebhookPath", cfg.path || "")),
+          label("Webhook port", input("sourcePort", cfg.port || defaults.sourcePort || 8765)),
+          label("Webhook path", input("sourceWebhookPath", cfg.path || defaults.sourceWebhookPath || "")),
           label("Workspace URL", input("sourceWorkspaceUrl", cfg.workspace_url || "")),
-          label("Provider repo", input("sourceRepository", cfg.repository || "")),
-          label("API token env", input("sourceApiTokenEnv", parseEnvRef(cfg.api_token_ref || ""))),
+          label("Provider repo", input("sourceRepository", cfg.repository || defaults.sourceRepository || "")),
+          label("API token env", input("sourceApiTokenEnv", parseEnvRef(cfg.api_token_ref || "") || defaults.sourceApiTokenEnv || "")),
           checkboxLabel("Quarantine attachments", quarantine),
           el("div", { class: "controls wide" }, [
             button(source ? "Save source" : "Add source", () => saveSource(source), "", false, source ? "device-floppy" : "plus"),
@@ -1100,11 +1215,12 @@ function dashboardHtml() {
       if (name && ICONS[name]) wrap.innerHTML = ICONS[name];
       return wrap;
     }
-    function button(text, onclick, cls = "", disabled = false, iconName = "") {
+    function button(text, onclick, cls = "", disabled = false, iconName = "", children = []) {
       const attrs = { class: cls, text, onclick };
       if (disabled) attrs.disabled = "disabled";
       const btn = el("button", attrs);
       if (iconName && ICONS[iconName]) btn.insertAdjacentHTML("afterbegin", ICONS[iconName]);
+      for (const child of children) btn.append(child);
       return btn;
     }
     function iconButton(label, onclick, iconName, cls = "", disabled = false) {

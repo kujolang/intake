@@ -15,7 +15,7 @@ The dashboard is local-only by default:
 
 Views:
 
-- Sources: add/edit email, file, webhook, and manual sources; test sources; sync sources; enable or disable sources.
+- Sources: guided first-source setup, add/edit email, file, webhook, Slack, GitHub, Jira, Linear, ClickUp, and manual sources; test sources; sync sources; enable or disable sources.
 - Items: queue filters, risk/status filters, item detail, normalized text, raw payload, AI summary, tags, queue changes, classify/draft/learn/resolve/block controls.
 - Actions: approve, reject, and run actions.
 - Learnings: review generated learning records.
@@ -27,7 +27,7 @@ Auto-actions remain off by default. The dashboard exposes the same global kill s
 
 ## Email Setup
 
-Open `Sources`, choose `email`, and fill:
+Open `Sources`, choose the `PrivateEmail` setup profile, and fill:
 
 - `ID`
 - `Name`
@@ -64,4 +64,10 @@ Add one source per inbox or external feed:
 - `slack-support-webhook` -> queue `support`
 - `github-issues-webhook` -> queue `engineering`
 
-Native Slack/Jira/GitHub adapters are later adapters. Today, use `webhook` or `file` sources for those tools.
+Use the native source type when Intake has one:
+
+- `slack` for signed Slack Events API messages.
+- `github` for signed issue webhooks and approved issue comments.
+- `jira`, `linear`, and `clickup` for provider-aware issue intake.
+
+Use `webhook` only for custom systems that do not have a native source type yet.

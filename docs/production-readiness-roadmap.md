@@ -58,6 +58,7 @@ Current status: Intake is ready for local-first live mailbox smoke testing, demo
 - Added per-source dashboard pending states for test/sync actions and richer last-sync detail.
 - Added bounded source test/sync history on source records and dashboard detail views.
 - Added runtime dashboard token display and rotation controls.
+- Added guided dashboard first-source setup with PrivateEmail, Slack, GitHub, and Manual presets plus saved-source readiness checklist.
 - Added dashboard accessibility assertions for icon-only controls and operator tabs.
 - Added GitHub webhook HMAC signature verification for issue intake.
 - Added optional attachment quarantine for email/file `.eml` sources.
@@ -92,10 +93,7 @@ Current status: Intake is ready for local-first live mailbox smoke testing, demo
 
 ## P1: Dashboard Completeness
 
-- Deepen first-run setup into a full guided wizard:
-  - configure secrets
-  - run readiness test
-  - send/sync first test item
+- Add a live-first-sync walkthrough after disposable mailbox credentials are available.
 - Add screenshots for empty states after demo data is removed.
 - Expand accessibility checks into a browser-driven smoke flow.
 
@@ -139,8 +137,8 @@ Current status: Intake is ready for local-first live mailbox smoke testing, demo
 
 Start with:
 
-1. Deepen dashboard first-run setup into a guided wizard.
-2. Run a real PrivateEmail smoke test with a disposable mailbox.
+1. Run a real PrivateEmail smoke test with a disposable mailbox.
+2. Capture the guided dashboard setup path using the disposable mailbox.
 3. Add restore drill screenshots.
 4. Add source health history beyond latest status and capture operator screenshots.
 5. Run CI/release packaging in the remote repository and capture the result.
