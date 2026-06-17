@@ -102,7 +102,7 @@ export async function loadMeta(root) {
 export async function saveItem(root, item, options = {}) {
   await writeJsonAtomic(recordPath(root, "items", item.id, "item id"), item);
   if (options.rebuildIndex !== false) {
-    await rebuildItemIndex(root);
+    await upsertItemIndex(root, item);
   }
 }
 
@@ -112,7 +112,7 @@ export async function loadItem(root, id) {
 
 export async function deleteItem(root, id, options = {}) {
   await rm(recordPath(root, "items", id, "item id"), { force: true });
-  if (options.rebuildIndex !== false) await rebuildItemIndex(root);
+  if (options.rebuildIndex !== false) await removeItemFromIndex(root, id);
 }
 
 export async function listItems(root, filters = {}) {
@@ -139,6 +139,20 @@ export async function listItemIndex(root, filters = {}) {
     return listItemIndex(root, filters);
   }
   return paginateRows(rows.filter((row) => matchesFilters(row, filters)).sort(sortItems), filters);
+}
+
+export async function listItemDedupeKeys(root) {
+  const rows = await readJson(join(root, "index", "items.json"), null);
+  if (!Array.isArray(rows)) {
+    await rebuildItemIndex(root);
+    return listItemDedupeKeys(root);
+  }
+  if (rows.every((row) => row.dedupe_key)) {
+    return rows.map((row) => row.dedupe_key);
+  }
+  const items = await listItems(root);
+  await rebuildItemIndex(root);
+  return items.map((item) => item.dedupe_key);
 }
 
 export async function saveAction(root, action) {
@@ -255,8 +269,39 @@ export async function logEvent(root, name, entry) {
 
 export async function rebuildItemIndex(root) {
   const items = await listItems(root);
-  const compact = items.map((item) => ({
+  const compact = items.map(compactItemRow);
+  await writeJsonAtomic(join(root, "index", "items.json"), compact);
+}
+
+async function upsertItemIndex(root, item) {
+  const path = join(root, "index", "items.json");
+  const rows = await readJson(path, null);
+  if (!Array.isArray(rows)) {
+    await rebuildItemIndex(root);
+    return;
+  }
+  const nextRow = compactItemRow(item);
+  const found = rows.findIndex((row) => row.id === item.id);
+  const next = found === -1
+    ? [...rows, nextRow]
+    : rows.map((row, index) => index === found ? nextRow : row);
+  await writeJsonAtomic(path, next.sort(sortItems));
+}
+
+async function removeItemFromIndex(root, id) {
+  const path = join(root, "index", "items.json");
+  const rows = await readJson(path, null);
+  if (!Array.isArray(rows)) {
+    await rebuildItemIndex(root);
+    return;
+  }
+  await writeJsonAtomic(path, rows.filter((row) => row.id !== id));
+}
+
+function compactItemRow(item) {
+  return {
     id: item.id,
+    dedupe_key: item.dedupe_key,
     source_id: item.source_id,
     source_type: item.source_type,
     title: item.title,
@@ -267,8 +312,7 @@ export async function rebuildItemIndex(root) {
     tags: item.tags || [],
     received_at: item.received_at,
     updated_at: item.updated_at
-  }));
-  await writeJsonAtomic(join(root, "index", "items.json"), compact);
+  };
 }
 
 export function defaultSettings() {

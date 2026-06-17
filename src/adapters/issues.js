@@ -1,3 +1,4 @@
+import { createHmac } from "node:crypto";
 import { createServer } from "node:http";
 import { makeItem } from "../models.js";
 import { resolveSecretRef } from "../secrets.js";
@@ -9,7 +10,9 @@ const MAX_ISSUE_BODY_BYTES = 1024 * 1024;
 const ISSUE_TYPES = ["github", "jira", "linear", "clickup"];
 
 export function issueCapabilities(provider) {
-  return [`receive_${provider}_webhook`, "normalize_issue", "replay"];
+  const base = [`receive_${provider}_webhook`, "normalize_issue", "replay"];
+  if (provider === "github") base.push("comment_issue");
+  return base;
 }
 
 export function isIssueSourceType(type) {
@@ -68,14 +71,14 @@ export async function startIssueWebhookServer(root, source, options = {}) {
         res.end("not found");
         return;
       }
-      const token = req.headers.authorization?.replace(/^Bearer\s+/i, "") || req.headers["x-intake-token"] || new URL(req.url, `http://localhost:${port}`).searchParams.get("token");
-      if (!timingSafeEqualString(token, expectedToken)) {
+      const raw = await readStreamText(req, { maxBytes: MAX_ISSUE_BODY_BYTES, label: `${source.type} webhook request body` });
+      if (!verifyIssueRequest(req, raw, expectedToken, source.type, port)) {
         await logEvent(root, "errors", { source_id: source.id, event_type: `${source.type}_auth_failed`, status: "blocked" });
         res.writeHead(401);
         res.end("unauthorized");
         return;
       }
-      const payload = JSON.parse(await readStreamText(req, { maxBytes: MAX_ISSUE_BODY_BYTES, label: `${source.type} webhook request body` }));
+      const payload = JSON.parse(raw);
       const item = await normalizeIssuePayload(root, source, payload);
       await saveItem(root, item);
       await classifyAndSave(root, item.id);
@@ -91,6 +94,45 @@ export async function startIssueWebhookServer(root, source, options = {}) {
   await new Promise((resolve) => server.listen(port, "127.0.0.1", resolve));
   const address = server.address();
   return { server, url: `http://127.0.0.1:${address.port}${path}` };
+}
+
+export function signGitHubBody(body, secret) {
+  const digest = createHmac("sha256", secret).update(body).digest("hex");
+  return `sha256=${digest}`;
+}
+
+export async function addGitHubIssueComment(source, action, item) {
+  const repository = item.metadata?.project || source.config?.repository;
+  const issueNumber = item.source_thread_id || item.source_native_id;
+  const token = source.config?.api_token_ref ? resolveSecretRef(source.config.api_token_ref, source.id) : source.config?.api_token;
+  if (!repository) throw new Error("GitHub comment action requires item.metadata.project or source.config.repository");
+  if (!issueNumber) throw new Error("GitHub comment action requires item.source_thread_id");
+  if (!token) throw new Error("GitHub comment action requires config.api_token_ref");
+  if (!/^[A-Za-z0-9][A-Za-z0-9_.-]*\/[A-Za-z0-9][A-Za-z0-9_.-]*$/.test(String(repository))) throw new Error("GitHub comment action requires repository in owner/name format");
+  if (!/^\d+$/.test(String(issueNumber))) throw new Error("GitHub comment action requires a numeric issue number");
+  const response = await fetch(`https://api.github.com/repos/${repository}/issues/${issueNumber}/comments`, {
+    method: "POST",
+    headers: {
+      accept: "application/vnd.github+json",
+      authorization: `Bearer ${token}`,
+      "content-type": "application/json",
+      "user-agent": "kujo-intake"
+    },
+    body: JSON.stringify({ body: action.body || action.metadata?.body || "" })
+  });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(`GitHub comment failed: ${response.status} ${payload.message || response.statusText}`);
+  }
+  return { provider: "github", comment_url: payload.html_url || payload.url || null, issue: String(issueNumber), repository };
+}
+
+function verifyIssueRequest(req, raw, expectedToken, provider, port) {
+  if (provider === "github" && req.headers["x-hub-signature-256"]) {
+    return timingSafeEqualString(req.headers["x-hub-signature-256"], signGitHubBody(raw, expectedToken));
+  }
+  const token = req.headers.authorization?.replace(/^Bearer\s+/i, "") || req.headers["x-intake-token"] || new URL(req.url, `http://localhost:${port}`).searchParams.get("token");
+  return timingSafeEqualString(token, expectedToken);
 }
 
 function normalizeByProvider(provider, payload) {

@@ -3,8 +3,8 @@ import assert from "node:assert/strict";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { normalizeIssuePayload, startIssueWebhookServer, testIssueConnection } from "../src/adapters/issues.js";
-import { makeSource } from "../src/models.js";
+import { addGitHubIssueComment, normalizeIssuePayload, signGitHubBody, startIssueWebhookServer, testIssueConnection } from "../src/adapters/issues.js";
+import { makeAction, makeItem, makeSource } from "../src/models.js";
 import { initStore, listItems, saveSources } from "../src/storage.js";
 import { assertIntakeItemContract } from "./adapter-contract.js";
 
@@ -90,6 +90,81 @@ test("issue webhook receiver accepts token-authenticated payloads", async () => 
       await new Promise((resolve) => receiver.server.close(resolve));
     }
   });
+});
+
+test("GitHub issue receiver accepts signed webhook payloads", async () => {
+  await withStore(async (root) => {
+    const source = makeSource("github", {
+      id: "github",
+      name: "GitHub",
+      config: { token: "github-secret", path: "/webhook/github", port: 0 },
+      default_queue: "engineering"
+    });
+    await saveSources(root, [source]);
+    const receiver = await startIssueWebhookServer(root, source, { port: 0 });
+    try {
+      const body = JSON.stringify({
+        action: "opened",
+        issue: { id: 10, title: "Signed issue", body: "Webhook signed", user: { login: "octocat" } },
+        repository: { full_name: "acme/signed" }
+      });
+      const response = await fetch(receiver.url, {
+        method: "POST",
+        headers: { "x-hub-signature-256": signGitHubBody(body, "github-secret"), "content-type": "application/json" },
+        body
+      });
+      assert.equal(response.status, 202);
+      const items = await listItems(root);
+      assert.equal(items.length, 1);
+      assert.equal(items[0].source_type, "github");
+
+      const rejected = await fetch(receiver.url, {
+        method: "POST",
+        headers: { "x-hub-signature-256": signGitHubBody(body, "wrong-secret"), "content-type": "application/json" },
+        body
+      });
+      assert.equal(rejected.status, 401);
+    } finally {
+      await new Promise((resolve) => receiver.server.close(resolve));
+    }
+  });
+});
+
+test("GitHub comment writeback validates repository and issue number before fetch", async () => {
+  const previousFetch = globalThis.fetch;
+  process.env.INTAKE_TEST_GITHUB_API_TOKEN = "github-api-token";
+  globalThis.fetch = async () => {
+    throw new Error("fetch should not be called");
+  };
+  try {
+    const source = makeSource("github", {
+      id: "github",
+      name: "GitHub",
+      config: { api_token_ref: "env:INTAKE_TEST_GITHUB_API_TOKEN" }
+    });
+    const action = makeAction({ intake_item_id: "item", type: "comment_issue", body: "hello" });
+    await assert.rejects(() => addGitHubIssueComment(source, action, makeItem({
+      source_id: "github",
+      source_type: "github",
+      source_native_id: "issue-node",
+      source_thread_id: "7",
+      title: "Bad repo",
+      body: "Body",
+      metadata: { project: "../bad" }
+    })), /owner\/name/);
+    await assert.rejects(() => addGitHubIssueComment(source, action, makeItem({
+      source_id: "github",
+      source_type: "github",
+      source_native_id: "issue-node",
+      source_thread_id: "abc",
+      title: "Bad issue",
+      body: "Body",
+      metadata: { project: "acme/app" }
+    })), /numeric issue number/);
+  } finally {
+    globalThis.fetch = previousFetch;
+    delete process.env.INTAKE_TEST_GITHUB_API_TOKEN;
+  }
 });
 
 test("issue source readiness checks require a token or secret ref", () => {

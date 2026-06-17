@@ -5,10 +5,10 @@ import { existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createManualItem } from "../src/adapters/manual.js";
-import { makeAction, makeLearning, makeSource } from "../src/models.js";
+import { makeAction, makeItem, makeLearning, makeSource } from "../src/models.js";
 import { evaluatePolicy } from "../src/policy.js";
 import { exportStrataDaily, exportTotalRecall } from "../src/exports.js";
-import { initStore, listActions, listItemIndex, listItems, listLearnings, loadItem, loadSettings, loadSources, readRaw, saveAction, saveItem, saveLearning, savePolicies, saveSettings, saveSources, storeRaw } from "../src/storage.js";
+import { deleteItem, initStore, listActions, listItemIndex, listItems, listLearnings, loadItem, loadSettings, loadSources, readRaw, saveAction, saveItem, saveLearning, savePolicies, saveSettings, saveSources, storeRaw } from "../src/storage.js";
 import { approveAction, classifyAndSave, proposeDraft, runAction, syncAll } from "../src/workflow.js";
 
 async function withStore(fn) {
@@ -154,7 +154,22 @@ test("item index supports filtered pagination for dashboard list views", async (
     assert.equal(first.length, 2);
     assert.equal(second.length, 1);
     assert.ok(first[0].id);
+    assert.ok(first[0].dedupe_key);
     assert.equal(first[0].body, undefined);
+  });
+});
+
+test("item index updates incrementally on item save and delete", async () => {
+  await withStore(async (root, source) => {
+    const item = await createManualItem(root, source, { title: "Move me", body: "How do I test index updates?", queue: "support" });
+    await saveItem(root, item);
+    await saveItem(root, { ...item, queue: "engineering", status: "queued" });
+    assert.equal((await listItemIndex(root, { queue: "support" })).length, 0);
+    const engineering = await listItemIndex(root, { queue: "engineering" });
+    assert.equal(engineering.length, 1);
+    assert.equal(engineering[0].status, "queued");
+    await deleteItem(root, item.id);
+    assert.equal((await listItemIndex(root, { queue: "engineering" })).length, 0);
   });
 });
 
@@ -219,5 +234,63 @@ test("auto-action execution records action counters", async () => {
     assert.equal(result.status, "executed");
     const counters = (await loadSettings(root)).action_counters;
     assert.equal(counters.mark_resolved.day_count, 1);
+  });
+});
+
+test("approved GitHub comment actions execute through adapter writeback", async () => {
+  await withStore(async (root) => {
+    const previousFetch = globalThis.fetch;
+    process.env.INTAKE_TEST_GITHUB_API_TOKEN = "github-api-token";
+    globalThis.fetch = async (url, options) => {
+      assert.equal(url, "https://api.github.com/repos/acme/app/issues/7/comments");
+      assert.equal(options.method, "POST");
+      assert.equal(options.headers.authorization, "Bearer github-api-token");
+      assert.deepEqual(JSON.parse(options.body), { body: "Thanks, we are reviewing this." });
+      return {
+        ok: true,
+        json: async () => ({ html_url: "https://github.com/acme/app/issues/7#issuecomment-1" })
+      };
+    };
+    try {
+      const source = makeSource("github", {
+        id: "github",
+        name: "GitHub",
+        config: { api_token_ref: "env:INTAKE_TEST_GITHUB_API_TOKEN", repository: "acme/app" }
+      });
+      await saveSources(root, [source]);
+      await savePolicies(root, [{
+        id: "github-comments",
+        applies_to_sources: ["github"],
+        applies_to_categories: ["*"],
+        allowed_actions: ["comment_issue"],
+        blocked_actions: [],
+        risk_ceiling: "critical",
+        requires_human_review: true,
+        auto_execute_allowed: false
+      }]);
+      const item = makeItem({
+        source_id: source.id,
+        source_type: "github",
+        source_native_id: "issue-node",
+        source_thread_id: "7",
+        title: "GitHub issue",
+        body: "Bug report",
+        metadata: { project: "acme/app" }
+      });
+      await saveItem(root, item);
+      const action = makeAction({
+        intake_item_id: item.id,
+        type: "comment_issue",
+        status: "approved",
+        body: "Thanks, we are reviewing this."
+      });
+      await saveAction(root, action);
+      const result = await runAction(root, action.id);
+      assert.equal(result.status, "executed");
+      assert.equal(result.result.comment_url, "https://github.com/acme/app/issues/7#issuecomment-1");
+    } finally {
+      globalThis.fetch = previousFetch;
+      delete process.env.INTAKE_TEST_GITHUB_API_TOKEN;
+    }
   });
 });

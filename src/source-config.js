@@ -28,10 +28,19 @@ export function buildSourceFromInput(input, existing = null) {
     config.port = Number(input.port ?? config.port ?? 8765);
     config.path = input.path ?? config.path ?? "";
     if (input.token) config.token = input.token;
+    const apiTokenRef = input.api_token_ref || input.apiTokenRef || (input.api_token_env || input.apiTokenEnv ? `env:${input.api_token_env || input.apiTokenEnv}` : null);
+    if (apiTokenRef) {
+      validateSecretRef(apiTokenRef, input.id || existing?.id || type);
+      config.api_token_ref = apiTokenRef;
+    }
+    if (input.repository) config.repository = input.repository;
   } else if (type === "slack") {
     config.port = Number(input.port ?? config.port ?? 8766);
     config.path = input.path ?? config.path ?? "";
     config.workspace_url = input.workspace_url ?? input.workspaceUrl ?? config.workspace_url ?? "";
+  }
+  if (input.quarantine_attachments !== undefined || input.quarantineAttachments !== undefined) {
+    config.quarantine_attachments = Boolean(input.quarantine_attachments ?? input.quarantineAttachments);
   }
   const allowedActions = input.allowed_actions ?? input.allowedActions;
   if (allowedActions) config.allowed_actions = Array.isArray(allowedActions) ? allowedActions : String(allowedActions).split(",").map((part) => part.trim()).filter(Boolean);
@@ -66,6 +75,7 @@ export function sanitizeSources(sources) {
 export function sanitizeSource(source) {
   const config = { ...(source.config || {}) };
   if (config.token) config.token = "[REDACTED]";
+  if (config.api_token) config.api_token = "[REDACTED]";
   return { ...source, config };
 }
 

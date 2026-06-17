@@ -10,7 +10,7 @@ import {
   loadRules,
   loadSettings,
   loadSources,
-  listItems,
+  listItemDedupeKeys,
   rebuildItemIndex,
   saveAction,
   saveItem,
@@ -20,6 +20,7 @@ import {
   logEvent
 } from "./storage.js";
 import { safetyCheck } from "./safety.js";
+import { appendSourceSyncHistory } from "./source-history.js";
 import { isoNow, uniq } from "./util.js";
 
 export async function syncAll(root, sourceId = null) {
@@ -35,8 +36,7 @@ export async function syncAll(root, sourceId = null) {
 
 export async function syncOne(root, source) {
   const sources = await loadSources(root);
-  const existing = await listItems(root);
-  const dedupe = new Set(existing.map((item) => item.dedupe_key));
+  const dedupe = new Set(await listItemDedupeKeys(root));
   const result = await syncSource(root, source);
   const saved = [];
   for (const item of result.items) {
@@ -62,17 +62,17 @@ export async function syncOne(root, source) {
     await classifyAndSave(root, item.id, { rebuildIndex: false });
     saved.push(item.id);
   }
-  await rebuildItemIndex(root);
+  if (saved.length > 0) await rebuildItemIndex(root);
   const syncedAt = isoNow();
   const syncResult = { ok: true, saved_count: saved.length, cursor: result.cursor };
   const nextSources = sources.map((candidate) =>
-    candidate.id === source.id ? {
+    candidate.id === source.id ? appendSourceSyncHistory({
       ...candidate,
       cursor: result.cursor,
       last_synced_at: syncedAt,
       last_sync_result: syncResult,
       updated_at: syncedAt
-    } : candidate
+    }, syncResult, syncedAt) : candidate
   );
   await saveSources(root, nextSources);
   await logEvent(root, "sync", {
@@ -238,6 +238,8 @@ export async function runAction(root, actionId) {
   } else if (action.type === "draft_response" && source?.type === "email") {
     result = await executeAdapterAction(source, { ...action, type: "append_remote_draft" }, item);
   } else if (action.type === "send_response") {
+    result = await executeAdapterAction(source, action, item);
+  } else if (action.type === "comment_issue") {
     result = await executeAdapterAction(source, action, item);
   } else if (action.type === "mark_resolved") {
     await saveItem(root, { ...item, status: "resolved", queue: "resolved", updated_at: isoNow() });

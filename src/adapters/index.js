@@ -1,7 +1,7 @@
 import { syncEmailSource, testEmailConnection, validateEmailConfig, emailCapabilities, sendEmailResponse, appendEmailDraft } from "./email.js";
 import { syncFileSource, fileCapabilities } from "./file.js";
 import { manualCapabilities } from "./manual.js";
-import { isIssueSourceType, issueCapabilities, testIssueConnection, validateIssueConfig } from "./issues.js";
+import { addGitHubIssueComment, isIssueSourceType, issueCapabilities, testIssueConnection, validateIssueConfig } from "./issues.js";
 import { slackCapabilities, testSlackConnection, validateSlackConfig } from "./slack.js";
 import { webhookCapabilities } from "./webhook.js";
 
@@ -50,5 +50,6 @@ export function validateSourceConfig(source) {
 export async function executeAdapterAction(source, action, item) {
   if (source.type === "email" && action.type === "send_response") return sendEmailResponse(source, action, item);
   if (source.type === "email" && action.type === "append_remote_draft") return appendEmailDraft(source, action, item);
+  if (source.type === "github" && action.type === "comment_issue") return addGitHubIssueComment(source, action, item);
   throw new Error(`source ${source.id} does not support action ${action.type}`);
 }
