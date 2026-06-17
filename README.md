@@ -1,0 +1,405 @@
+# Kujo Intake
+
+Kujo Intake turns inbound business noise into agent-readable work.
+
+It is a local-first intake layer for email, webhooks, local file drops, and manual operator input. Intake normalizes every source into a durable `IntakeItem`, applies deterministic rules and safety checks, proposes actions, requires approval where policy says it must, and exports reviewed learnings to Strata and TotalRecall-compatible files.
+
+Intake is designed as a showcase-quality reference app for the Kujo ecosystem: practical enough to run locally, small enough to understand, and structured enough to extend into new source adapters and agent workflows.
+
+## What It Does
+
+```text
+Source -> Adapter -> Raw payload -> IntakeItem -> Rules/Safety -> Queue -> Draft/Action -> Approval -> Audit log -> Learning export
+```
+
+- Normalizes inbound work from `manual`, `file`, `webhook`, `slack`, `github`, `jira`, `linear`, `clickup`, and `email` sources.
+- Routes work through deterministic rules for support, billing, legal, security, bugs, docs, and FAQ patterns.
+- Blocks unsafe auto-send behavior by default.
+- Treats prompt injection and credential-seeking inbound text as hostile data.
+- Creates human-reviewed draft actions before touching remote mailboxes.
+- Stores raw payloads, normalized records, actions, learnings, indexes, and logs under `.intake/`.
+- Runs with or without AI; AI hooks must pass through the same policy and audit path as deterministic actions.
+
+Intake is not an email client, not TotalRecall, and not BZBY. Email is one adapter. TotalRecall remembers what happened. BZBY can later operate across queues. Intake owns the active question: what just came in, and what should happen next?
+
+## Current Readiness
+
+This project is ready for local-first live mailbox smoke testing and source-adapter development. It is not yet a fully packaged enterprise deployment.
+
+Production-oriented safeguards already in place:
+
+- Local-only dashboard binding by default.
+- Token-authenticated dashboard API.
+- Secret references instead of stored mailbox passwords.
+- `.env`, `.intake/.env`, and macOS Keychain secret support.
+- IMAP and SMTP readiness checks for email sources.
+- Secure IMAP/SMTP defaults for PrivateEmail.
+- Atomic JSON writes for local state.
+- Storage schema metadata and doctor validation.
+- Portable backup, verify, restore, and rotation commands.
+- Retention and safe purge controls.
+- Native signed Slack Events API receiver.
+- Provider-aware GitHub, Jira, Linear, and ClickUp issue webhook receivers.
+- Source templates for common systems.
+- Deterministic audit/error/action/sync logs with redaction.
+- Bounded dashboard and webhook request bodies.
+- Constant-time webhook token checks.
+- Safe record ID and raw-payload path handling.
+- Optional HTTPS for explicitly non-local dashboard deployments.
+- Default policy blocks direct `send_response`.
+
+Before calling it enterprise-ready for a team or customer deployment, validate the roadmap in [docs/production-readiness-roadmap.md](docs/production-readiness-roadmap.md).
+
+## Install
+
+```sh
+npm install
+npm link
+intake init
+```
+
+Without `npm link`, run commands through Node:
+
+```sh
+node bin/intake.js init
+```
+
+## Common Commands
+
+```sh
+intake source add manual --id manual --name Manual
+intake item create --title "Client asked about pricing" --body "Follow up with details" --queue sales
+intake items
+intake show ITEM_ID
+intake classify ITEM_ID
+intake draft ITEM_ID
+intake approve ACTION_ID
+intake run ACTION_ID
+intake policy preview ITEM_ID draft_response
+intake learn ITEM_ID
+intake strata daily
+intake totalrecall export
+intake backup create --keep 7
+intake backup verify BACKUP_PATH
+intake backup restore BACKUP_PATH --target RESTORE_DIR
+intake retention apply --raw-days 90 --logs-days 180 --dry-run
+intake purge items --status resolved --before 2026-01-01 --dry-run
+intake templates list
+intake onboarding privateemail
+intake source clone support-email support-email-copy
+intake config export --output intake-config.json
+intake doctor
+intake dashboard
+intake eval run
+```
+
+## Dashboard
+
+Start the dashboard:
+
+```sh
+intake dashboard --port 8787
+```
+
+The dashboard binds to `127.0.0.1`, prints a tokenized local URL, and uses the same `.intake/` storage, policy, action, learning, and audit-log workflow as the CLI. Set `INTAKE_DASHBOARD_TOKEN` or pass `--token` if you want a stable local token.
+
+The dashboard includes:
+
+- Source management for email, file, webhook, and manual sources.
+- Settings and policy editing for local operators.
+- Email readiness checks for config, IMAP, and SMTP.
+- Persisted source health for last readiness test and last sync.
+- Intake item review and queue/tag controls.
+- Draft/action approval workflow.
+- Learnings, rules, and audit views.
+- Auto-action kill switch.
+
+## Sources
+
+Available adapters:
+
+- `manual`: create items directly from the CLI.
+- `file`: scan `.txt`, `.md`, `.json`, and `.eml` files from a local folder.
+- `webhook`: run a localhost JSON webhook receiver with token validation.
+- `slack`: run a signed Slack Events API receiver with URL verification.
+- `github`: receive GitHub issue and pull request webhooks.
+- `jira`: receive Jira issue webhooks.
+- `linear`: receive Linear issue webhooks.
+- `clickup`: receive ClickUp task webhooks.
+- `email`: sync IMAP mailboxes and create IMAP Drafts for approved draft actions.
+
+For multiple inboxes, add one source per inbox, for example `support-email`, `sales-email`, and `billing-email`, each with its own username, secret reference, default queue, and sync cadence.
+
+For GitHub, Jira, Linear, or ClickUp, use the provider source type so Intake can normalize issue IDs, titles, bodies, project metadata, states, and provider tags.
+
+List setup templates:
+
+```sh
+intake templates list
+intake templates show slack-events
+intake templates show github-webhook
+```
+
+## Slack Events Setup
+
+Create a Slack source with the app signing secret stored outside config:
+
+```sh
+INTAKE_SLACK_SIGNING_SECRET="slack-signing-secret"
+
+intake source add slack \
+  --id slack-support \
+  --name "Slack Support" \
+  --password-env INTAKE_SLACK_SIGNING_SECRET \
+  --path /slack/events \
+  --port 8766 \
+  --queue engineering
+```
+
+Run the receiver:
+
+```sh
+intake watch --source slack-support
+```
+
+Point the Slack Events API request URL at the printed local URL through your tunnel of choice. Intake verifies Slack request signatures, handles URL verification challenges, normalizes message events, stores raw payloads, and classifies resulting items.
+
+## PrivateEmail Setup
+
+PrivateEmail defaults:
+
+- IMAP: `mail.privateemail.com:993`, SSL
+- SMTP: `mail.privateemail.com:465`, SSL
+
+Store the mailbox password in `.intake/.env`:
+
+```sh
+INTAKE_SUPPORT_EMAIL_PASSWORD="mailbox-password"
+```
+
+Then add the source:
+
+```sh
+intake source add email \
+  --id support-email \
+  --name "Support Email" \
+  --username support@example.com \
+  --password-env INTAKE_SUPPORT_EMAIL_PASSWORD \
+  --queue support
+```
+
+Or use encrypted macOS Keychain storage:
+
+```sh
+security add-generic-password -s kujo-intake -a support@example.com -w "mailbox-password" -U
+
+intake source add email \
+  --id support-email \
+  --name "Support Email" \
+  --username support@example.com \
+  --keychain-service kujo-intake \
+  --keychain-account support@example.com \
+  --queue support
+```
+
+Test before syncing:
+
+```sh
+intake source test support-email
+```
+
+`source test` verifies:
+
+- `config`: required source settings are present and secure.
+- `imap`: the inbox can be reached and authenticated.
+- `smtp`: the outbound/draft transport can be reached and authenticated.
+
+No email is sent by `source test`.
+
+Source test and sync status are saved on the source record so operators can see the last readiness result and last sync count in the dashboard.
+
+## Live Email Smoke Test
+
+Use this path before relying on a live inbox:
+
+```sh
+intake doctor
+intake source test support-email
+intake sync support-email
+intake items --source support-email
+```
+
+Then send a harmless fake support email to the mailbox, sync again, open the item in the dashboard, classify it, create a draft, approve it, and run it.
+
+For email sources, a `draft_response` action appends a draft to the configured Drafts mailbox. Direct sending remains blocked by the default policy.
+
+## Policy and Safety
+
+The default policy blocks auto-send and requires human review for outbound behavior. High-risk legal, security, refund, and prompt-injection items are routed to review. The global auto-action kill switch is off by default:
+
+```sh
+intake auto-actions disable
+```
+
+Policy and safety docs:
+
+- [Security model](docs/security-model.md)
+- [Policy engine](docs/policy-engine.md)
+- [Prompt-injection defense](docs/prompt-injection-defense.md)
+- [Adapter authoring guide](docs/adapter-authoring.md)
+- [Release checklist](docs/release-checklist.md)
+- [Enterprise readiness checklist](docs/enterprise-readiness-checklist.md)
+- [End-to-end tutorial](docs/end-to-end-tutorial.md)
+- [Why Intake showcases Kujo](docs/why-kujo-showcase.md)
+- [Dashboard CSRF posture](docs/dashboard-csrf-posture.md)
+- [Attachment policy](docs/attachment-policy.md)
+- [Restore drill](docs/restore-drill.md)
+- [Example packs](docs/example-packs.md)
+
+## Storage
+
+All state lives under `.intake/` unless `INTAKE_DIR` or `--dir` is set.
+
+Key folders:
+
+- `.intake/config/`: sources, policies, rules, settings, agents.
+- `.intake/items/`: normalized intake records.
+- `.intake/actions/`: proposed, approved, blocked, rejected, and executed actions.
+- `.intake/learnings/`: reviewed learning candidates.
+- `.intake/raw/`: raw payload snapshots.
+- `.intake/logs/`: audit, sync, normalize, classify, policy, actions, and errors logs.
+- `.intake/backups/`: local backup archives created by `intake backup create`.
+
+Records are written atomically. Logs are JSONL and redacted before write.
+
+## Backup And Restore
+
+Create a portable backup:
+
+```sh
+intake backup create
+```
+
+Verify a backup before relying on it:
+
+```sh
+intake backup verify .intake/backups/intake-backup-YYYYMMDDHHMMSS.json.gz
+```
+
+Restore into an empty target:
+
+```sh
+intake backup restore .intake/backups/intake-backup-YYYYMMDDHHMMSS.json.gz --target .intake-restored
+```
+
+Backups are gzipped JSON with a manifest, storage schema version, and SHA-256 checksum per file. Local secrets are excluded by default: `.intake/.env` and `.intake/secrets/` are not included unless `--include-secrets` is passed.
+
+Keep only the latest N local backup archives:
+
+```sh
+intake backup create --keep 7
+```
+
+## Retention And Purge
+
+Preview retention cleanup:
+
+```sh
+intake retention apply --raw-days 90 --logs-days 180 --dry-run
+```
+
+Apply retention cleanup:
+
+```sh
+intake retention apply --raw-days 90 --logs-days 180
+```
+
+Preview a safe item purge:
+
+```sh
+intake purge items --status resolved --before 2026-01-01 --dry-run
+```
+
+Apply a purge only after reviewing the dry run:
+
+```sh
+intake purge items --status resolved --before 2026-01-01 --force
+```
+
+Purging selected items also removes linked actions, linked learnings, and raw payloads for those items.
+
+## Policy Preview
+
+Preview whether an action would be allowed, blocked, require review, or fit inside auto-action budgets:
+
+```sh
+intake policy preview ITEM_ID draft_response
+```
+
+Sources can define `allowed_actions` to further restrict what that source may execute. Direct `send_response` stays blocked by the default policy.
+
+## Operator Utilities
+
+Show guided setup steps:
+
+```sh
+intake onboarding privateemail
+intake onboarding slack
+```
+
+Clone a source as a disabled copy:
+
+```sh
+intake source clone support-email support-email-copy
+```
+
+Export configuration without local secrets:
+
+```sh
+intake config export --output intake-config.json
+```
+
+Import a reviewed config export:
+
+```sh
+intake config import intake-config.json --replace
+```
+
+## Demo Data
+
+Seed a realistic email interaction:
+
+```sh
+intake demo seed email
+```
+
+Clear demo records:
+
+```sh
+intake demo clear
+```
+
+## Verification
+
+Run the local quality gate:
+
+```sh
+npm run verify
+npm run bench -- --items 1000 --logs 100000 --fileRows 1000
+```
+
+The built-in eval suite covers routing and safety cases from the original build prompt, including refunds, legal threats, prompt injection, Slack-style bug reports, webhook payloads, learning generation, and auto-action policy checks.
+
+## Project Structure
+
+```text
+bin/intake.js       CLI entrypoint
+src/                Core app, adapters, workflow, dashboard, storage, policy
+tests/              Unit and smoke tests
+scripts/            Local benchmark and operator utility scripts
+docs/               Architecture, setup, security, and roadmap docs
+.github/            CI workflow definitions
+.intake/            Local runtime state, ignored by git
+```
+
+There are no required root-level runtime files outside `bin/`, `src/`, `tests/`, `docs/`, `.github/`, `README.md`, `CHANGELOG.md`, `package.json`, and `package-lock.json`.

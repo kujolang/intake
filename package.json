@@ -1,0 +1,35 @@
+{
+  "name": "kujo-intake",
+  "version": "0.1.0",
+  "description": "Local-first source-agnostic business intake for the Kujo ecosystem.",
+  "type": "module",
+  "private": true,
+  "bin": {
+    "intake": "bin/intake.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "test": "node --test tests/*.test.js",
+    "smoke": "node tests/smoke.mjs",
+    "lint": "node --check bin/intake.js && find src tests scripts -name '*.js' -o -name '*.mjs' | xargs -n1 node --check",
+    "verify": "npm run lint && npm test && npm run smoke && node bin/intake.js eval run && npm audit --audit-level=high",
+    "bench": "node scripts/bench.mjs",
+    "intake": "node bin/intake.js"
+  },
+  "dependencies": {
+    "@tabler/icons": "^3.44.0",
+    "imapflow": "^1.0.191",
+    "mailparser": "^3.7.4",
+    "nodemailer": "^9.0.0"
+  },
+  "keywords": [
+    "kujo",
+    "intake",
+    "local-first",
+    "agents",
+    "workflow"
+  ],
+  "license": "MIT"
+}
