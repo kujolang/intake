@@ -4,6 +4,7 @@ import { createServer as createHttpsServer } from "node:https";
 import { readFileSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
+import { attachmentInventory, readQuarantinedAttachment } from "./attachments.js";
 import { testSource } from "./adapters/index.js";
 import { buildSourceFromInput, sanitizeSource, sanitizeSources } from "./source-config.js";
 import { initStore, listActionIndex, listActions, listItemIndex, listLearningIndex, listLearnings, loadAction, loadItem, loadPolicies, loadRules, loadSettings, loadSources, readRaw, saveItem, savePolicies, saveSettings, saveSources, logEvent } from "./storage.js";
@@ -31,6 +32,7 @@ const ICON_NAMES = [
   "list",
   "lock",
   "mail",
+  "paperclip",
   "player-play",
   "plug-connected",
   "plug",
@@ -114,6 +116,21 @@ async function routeApi(root, method, url, body, session = {}) {
   if (method === "GET" && parts[1] === "items" && parts[3] === "raw") {
     const item = await requireItem(root, parts[2]);
     return { item_id: item.id, raw: await readRaw(root, item.raw_payload_path) };
+  }
+  if (method === "GET" && parts[1] === "items" && parts[3] === "attachments" && parts.length === 4) {
+    const item = await requireItem(root, parts[2]);
+    return { item_id: item.id, attachments: attachmentInventory(item) };
+  }
+  if (method === "GET" && parts[1] === "items" && parts[3] === "attachments" && parts[5] === "download") {
+    const item = await requireItem(root, parts[2]);
+    const attachment = await readQuarantinedAttachment(root, item, parts[4]);
+    await logEvent(root, "audit", {
+      source_id: item.source_id,
+      item_id: item.id,
+      event_type: "attachment_downloaded",
+      output_refs: [`attachment:${parts[4]}`]
+    });
+    return { attachment };
   }
   if (method === "GET" && parts[1] === "items" && parts[2]) {
     return { item: await requireItem(root, parts[2]) };
@@ -590,6 +607,8 @@ function dashboardHtml() {
     .controls { display: flex; gap: 8px; flex-wrap: wrap; margin: 12px 0; }
     .quick-actions { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 6px; margin: 8px 0 12px; }
     .quick-actions button { width: 100%; min-width: 0; }
+    .attachment-row { display: grid; grid-template-columns: 1fr auto; gap: 8px; align-items: center; border: 1px solid var(--line); border-radius: 7px; padding: 8px; margin-top: 8px; background: #fbfdfc; }
+    .attachment-row b { overflow-wrap: anywhere; }
     .formrow { display: flex; gap: 8px; margin: 8px 0; }
     .formrow > * { flex: 1; }
     .work-field { display: grid; gap: 5px; margin: 10px 0; }
@@ -799,9 +818,31 @@ function dashboardHtml() {
         ]),
         el("div", { class: "field" }, [el("b", { text: "Normalized" }), el("div", { class: "bodytext", text: item.normalized_text || item.body || "" })]),
         el("div", { class: "field" }, [el("b", { text: "AI Summary" }), el("div", { class: "bodytext", text: item.ai_summary || "none" })]),
+        attachmentSection(item),
         el("div", { class: "field" }, [el("b", { text: "Tags" }), el("div", { class: "rowmeta" }, (item.tags || []).map((t) => pill(t)))])
       );
       renderWorkSurface(item);
+    }
+    function attachmentSection(item) {
+      const attachments = item.attachments || [];
+      if (!attachments.length) return el("div", { class: "field" }, [el("b", { text: "Attachments" }), el("div", { class: "muted", text: "none" })]);
+      return el("div", { class: "field" }, [
+        el("b", { text: "Attachments" }),
+        ...attachments.map((attachment, index) => {
+          const downloadable = attachment.quarantined === true && Boolean(attachment.quarantine_path);
+          return el("div", { class: "attachment-row" }, [
+            el("div", {}, [
+              el("b", { text: attachment.filename || "attachment" }),
+              el("div", { class: "rowmeta" }, [
+                pill(attachment.content_type || "application/octet-stream"),
+                pill(String(attachment.size || 0) + " bytes"),
+                pill(downloadable ? "quarantined" : "metadata-only")
+              ])
+            ]),
+            iconButton("Download quarantined attachment", () => downloadAttachment(item.id, index), "cloud-download", "", !downloadable)
+          ]);
+        })
+      ]);
     }
     function renderWorkSurface(item) {
       const draft = el("textarea", { id: "draftBody", placeholder: "Edit a draft before creating an action" });
@@ -829,6 +870,20 @@ function dashboardHtml() {
           qs("#workSurface").append(el("pre", { text: raw.raw || "" }));
         }, "", false, "file-text")
       );
+    }
+    async function downloadAttachment(itemId, index) {
+      setStatus("Downloading attachment...");
+      const { attachment } = await api("/api/items/" + encodeURIComponent(itemId) + "/attachments/" + index + "/download");
+      const binary = atob(attachment.content_base64);
+      const bytes = new Uint8Array(binary.length);
+      for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
+      const url = URL.createObjectURL(new Blob([bytes], { type: attachment.content_type || "application/octet-stream" }));
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = attachment.filename || "attachment";
+      link.click();
+      URL.revokeObjectURL(url);
+      setStatus("Attachment downloaded");
     }
     async function itemPost(id, action, payload) {
       setStatus(action + "...");

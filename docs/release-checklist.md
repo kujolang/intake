@@ -18,6 +18,7 @@ Use this checklist before publishing or presenting Kujo Intake as a release cand
 - Open the dashboard and verify Items, Sources, Actions, Learnings, Rules, and Audit render.
 - Run `intake demo clear`.
 - Run `intake backup create`, `intake backup verify`, and restore into an empty target.
+- If attachments are enabled for a test source, confirm dashboard inventory renders and quarantined downloads are audited.
 
 ## Live Email Gate
 
@@ -44,6 +45,7 @@ Use this checklist before publishing or presenting Kujo Intake as a release cand
 - Run a dry-run item purge command.
 - Confirm forced purge only removes selected items and linked actions/learnings/raw payloads.
 - Confirm backup excludes `.intake/.env` and `.intake/secrets/` unless `--include-secrets` is passed.
+- Confirm quarantined attachment paths remain under `.intake/raw/attachments/`.
 
 ## Packaging Gate
 

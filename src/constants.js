@@ -65,6 +65,7 @@ export const REQUIRED_DIRS = [
   "raw/webhooks",
   "raw/files",
   "raw/manual",
+  "raw/attachments",
   "items",
   "actions",
   "learnings",

@@ -1,13 +1,13 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createManualItem } from "../src/adapters/manual.js";
 import { startDashboard } from "../src/dashboard.js";
 import { makeSource } from "../src/models.js";
-import { initStore, loadSources, saveItem, saveSources } from "../src/storage.js";
-import { classifyAndSave } from "../src/workflow.js";
+import { initStore, listItems, loadSources, saveItem, saveSources } from "../src/storage.js";
+import { classifyAndSave, syncAll } from "../src/workflow.js";
 
 async function withDashboard(fn) {
   const root = await mkdtemp(join(tmpdir(), "intake-dashboard-test-"));
@@ -290,6 +290,68 @@ test("dashboard rejects oversized request bodies", async () => {
     });
     assert.equal(response.status, 413);
   });
+});
+
+test("dashboard exposes quarantined attachment inventory and audited downloads", async () => {
+  const root = await mkdtemp(join(tmpdir(), "intake-dashboard-attachments-test-"));
+  const drop = join(root, "drop");
+  let dashboard;
+  try {
+    await initStore(root);
+    await mkdir(drop, { recursive: true });
+    await writeFile(join(drop, "message.eml"), [
+      "From: Client <client@example.test>",
+      "To: Support <support@example.test>",
+      "Subject: Attachment test",
+      "MIME-Version: 1.0",
+      "Content-Type: multipart/mixed; boundary=frontier",
+      "",
+      "--frontier",
+      "Content-Type: text/plain; charset=utf-8",
+      "",
+      "Please review the attachment.",
+      "--frontier",
+      "Content-Type: text/plain; name=note.txt",
+      "Content-Disposition: attachment; filename=note.txt",
+      "",
+      "quarantined attachment body",
+      "--frontier--",
+      ""
+    ].join("\r\n"), "utf8");
+    const source = makeSource("file", {
+      id: "file-mail",
+      name: "File Mail",
+      config: { path: drop, quarantine_attachments: true }
+    });
+    await saveSources(root, [source]);
+    await syncAll(root, "file-mail");
+    const [item] = await listItems(root);
+
+    dashboard = await startDashboard(root, { port: 0, token: "test-token" });
+    const base = `http://${dashboard.host}:${dashboard.port}`;
+    const headers = { "x-intake-token": "test-token", "content-type": "application/json" };
+
+    const inventory = await (await fetch(`${base}/api/items/${item.id}/attachments`, { headers })).json();
+    assert.equal(inventory.attachments.length, 1);
+    assert.equal(inventory.attachments[0].filename, "note.txt");
+    assert.equal(inventory.attachments[0].downloadable, true);
+    assert.equal("quarantine_path" in inventory.attachments[0], false);
+
+    const download = await (await fetch(`${base}/api/items/${item.id}/attachments/0/download`, { headers })).json();
+    assert.equal(Buffer.from(download.attachment.content_base64, "base64").toString("utf8"), "quarantined attachment body");
+    const audit = await (await fetch(`${base}/api/logs?name=audit`, { headers })).json();
+    assert.ok(audit.logs.some((entry) => entry.event_type === "attachment_downloaded" && entry.item_id === item.id));
+
+    await saveItem(root, {
+      ...item,
+      attachments: [{ ...item.attachments[0], quarantine_path: "../outside.txt" }]
+    });
+    const unsafe = await fetch(`${base}/api/items/${item.id}/attachments/0/download`, { headers });
+    assert.equal(unsafe.status, 500);
+  } finally {
+    if (dashboard) await new Promise((resolve) => dashboard.server.close(resolve));
+    await rm(root, { recursive: true, force: true });
+  }
 });
 
 test("dashboard HTML keeps icon controls accessible", async () => {

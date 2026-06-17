@@ -224,7 +224,7 @@ No email is sent by `source test`.
 
 Source test and sync status are saved on the source record so operators can see the last readiness result and last sync count in the dashboard.
 
-Email and `.eml` file sources store attachment metadata by default. Set `--quarantine-attachments` when adding a source, or enable Quarantine attachments in the dashboard source editor, to write attachment bytes into `.intake/raw/attachments/` and keep item records metadata-only.
+Email and `.eml` file sources store attachment metadata by default. Set `--quarantine-attachments` when adding a source, or enable Quarantine attachments in the dashboard source editor, to write attachment bytes into `.intake/raw/attachments/` and keep item records metadata-only. The dashboard shows attachment inventory and provides an explicit audited download control for quarantined files; Intake never opens or executes attachments automatically.
 
 ## Live Email Smoke Test
 

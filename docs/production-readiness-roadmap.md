@@ -71,6 +71,7 @@ Current status: Intake is ready for local-first live mailbox smoke testing, demo
 - Added warm dashboard API timings and 100k audit-log baseline to the performance evidence.
 - Added compact action and learning indexes so dashboard action, learning, summary, and approval-audit reads stay under 125 ms in local baselines.
 - Added `npm run bench:gate` to enforce warm dashboard and repeated-sync performance thresholds.
+- Added dashboard attachment inventory and audited quarantined-attachment downloads with path and size guards.
 - Added restore drill documentation.
 - Expanded agent-facing docs with stable records, allowed operations, and blocked operations.
 - Added example packs for agencies, SaaS support, solo founders, and internal ops.
@@ -117,7 +118,7 @@ Current status: Intake is ready for local-first live mailbox smoke testing, demo
 
 ## P1: Security
 
-- Add attachment quarantine dashboard review/restore controls after operator flow is designed.
+- Add malware scanning and role-separated release controls for quarantined attachments after operator policy is defined.
 
 ## P2: AI And Language Showcase
 

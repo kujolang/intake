@@ -11,16 +11,21 @@ Email and file adapters record attachment metadata such as filename, content typ
 - Treat filenames and content types as untrusted.
 - Do not auto-open links or attachments.
 - Route security-sensitive attachment language to human review through rules/safety.
+- When a source enables quarantine, store attachment bytes under `.intake/raw/attachments/`.
+- Keep item records metadata-only even when attachment bytes are quarantined.
+- Show sanitized attachment inventory in the dashboard.
+- Allow explicit dashboard download of quarantined attachments through a token-authenticated API.
+- Record attachment downloads in the audit log.
+- Reject quarantine paths outside `.intake/raw/attachments/`.
+- Enforce a 25 MB per-download limit.
 
-## Future Optional Quarantine
+## Remaining Hardening
 
-Before enabling attachment extraction, add:
+Before treating attachment workflows as enterprise-complete, add:
 
-- Quarantine directory outside normal raw payload browsing.
-- Size limits per attachment and per message.
 - Content type allowlist.
-- Hash inventory.
-- Manual release workflow.
 - Malware scanning integration point.
+- Operator role separation for attachment release.
+- Optional attachment export directory separate from browser downloads.
 
-Until those controls exist, metadata-only is the production-safe default.
+Until those controls exist, metadata-only remains the safest default for new sources.
