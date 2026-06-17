@@ -17,7 +17,7 @@ Views:
 
 - Sources: guided first-source setup, add/edit email, file, webhook, Slack, GitHub, Jira, Linear, ClickUp, and manual sources; test sources; sync sources; enable or disable sources.
 - Items: queue filters, risk/status filters, item detail, normalized text, raw payload, AI summary, tags, queue changes, classify/draft/learn/resolve/block controls.
-- Actions: approve, reject, and run actions.
+- Actions: approve, reject, and run actions; filter approval audit rows by operator, source, action type, status, and date; export approval audit CSV.
 - Learnings: review generated learning records.
 - Rules: inspect deterministic rules.
 - Audit: inspect JSONL operational logs.

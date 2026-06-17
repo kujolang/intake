@@ -33,7 +33,7 @@ This is the next-session work queue after the latest local verification sweep. I
 
 - Add a live-first-sync checklist state after disposable mailbox credentials are available.
 - Add browser-driven accessibility smoke checks for desktop and mobile widths.
-- Add deeper approval audit filtering by operator, source, action type, and date.
+- Add signed approval report bundles after release signing policy is decided.
 
 ## P1: Security
 

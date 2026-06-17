@@ -50,6 +50,7 @@ Current status: Intake is ready for local-first live mailbox smoke testing, demo
 - Added dashboard policy editing with structured validation.
 - Added dashboard policy dry-run controls for proposed actions.
 - Added approval audit summaries by operator and action type.
+- Added filterable approval audit rows and CSV export by operator, source, action type, status, and date.
 - Added native provider-aware issue webhook adapters for GitHub, Jira, Linear, and ClickUp.
 - Added shared adapter contract tests for normalized intake items.
 - Added benchmark harness for large local stores, audit logs, and repeated sync dedupe.
@@ -104,7 +105,7 @@ Current status: Intake is ready for local-first live mailbox smoke testing, demo
 
 ## P1: Policy And Approvals
 
-- Add deeper approval audit filters and export by operator, source, and action type.
+- Add signed approval report bundles after release signing policy is decided.
 
 ## P1: Performance
 

@@ -122,7 +122,7 @@ async function routeApi(root, method, url, body, session = {}) {
     return mutateItem(root, parts[2], parts[3], body);
   }
   if (method === "GET" && parts[1] === "actions" && parts.length === 2) return { actions: await listActions(root, listFiltersFrom(url)) };
-  if (method === "GET" && parts[1] === "approval-audit") return approvalAudit(root);
+  if (method === "GET" && parts[1] === "approval-audit") return approvalAudit(root, url);
   if (method === "GET" && parts[1] === "actions" && parts[2]) return { action: await loadAction(root, parts[2]) };
   if (method === "POST" && parts[1] === "actions" && parts[2]) return mutateAction(root, parts[2], parts[3]);
   if (method === "GET" && parts[1] === "sources") return { sources: sanitizeSources(await loadSources(root)) };
@@ -210,23 +210,94 @@ async function mutateAction(root, actionId, action) {
   throw new Error("unknown action command");
 }
 
-async function approvalAudit(root) {
+async function approvalAudit(root, url) {
+  const filters = approvalAuditFilters(url);
   const actions = await listActions(root);
-  const byOperator = {};
-  const byType = {};
+  const items = new Map();
+  const rows = [];
   for (const action of actions) {
     if (!action.approved_by && !action.approved_at) continue;
-    const operator = action.approved_by || "unknown";
-    byOperator[operator] = (byOperator[operator] || 0) + 1;
-    byType[action.type || "unknown"] = (byType[action.type || "unknown"] || 0) + 1;
-  }
-  return {
-    approvals: {
-      total: Object.values(byOperator).reduce((sum, count) => sum + count, 0),
-      by_operator: byOperator,
-      by_type: byType
+    let item = null;
+    if (action.intake_item_id) {
+      if (!items.has(action.intake_item_id)) items.set(action.intake_item_id, await loadItem(root, action.intake_item_id));
+      item = items.get(action.intake_item_id);
     }
+    const decisionAt = action.approved_at || action.executed_at || action.created_at || "";
+    const row = {
+      action_id: action.id,
+      item_id: action.intake_item_id || "",
+      source_id: item?.source_id || action.source_id || "unknown",
+      operator: action.approved_by || "unknown",
+      action_type: action.type || "unknown",
+      status: action.status || "unknown",
+      risk_level: action.risk_level || item?.risk_level || "",
+      decision_at: decisionAt,
+      executed_at: action.executed_at || ""
+    };
+    if (matchesApprovalAuditFilters(row, filters)) rows.push(row);
+  }
+  const byOperator = {};
+  const byType = {};
+  const bySource = {};
+  const byStatus = {};
+  for (const row of rows) {
+    byOperator[row.operator] = (byOperator[row.operator] || 0) + 1;
+    byType[row.action_type] = (byType[row.action_type] || 0) + 1;
+    bySource[row.source_id] = (bySource[row.source_id] || 0) + 1;
+    byStatus[row.status] = (byStatus[row.status] || 0) + 1;
+  }
+  const result = {
+    approvals: {
+      total: rows.length,
+      by_operator: byOperator,
+      by_type: byType,
+      by_source: bySource,
+      by_status: byStatus
+    },
+    filters,
+    rows
   };
+  if (filters.format === "csv") result.csv = approvalAuditCsv(rows);
+  return result;
+}
+
+function approvalAuditFilters(url) {
+  return {
+    operator: nullableString(url.searchParams.get("operator")),
+    action_type: nullableString(url.searchParams.get("action_type")),
+    source_id: nullableString(url.searchParams.get("source_id")),
+    status: nullableString(url.searchParams.get("status")),
+    date_from: nullableString(url.searchParams.get("date_from")),
+    date_to: nullableString(url.searchParams.get("date_to")),
+    format: nullableString(url.searchParams.get("format"))
+  };
+}
+
+function matchesApprovalAuditFilters(row, filters) {
+  if (filters.operator && row.operator !== filters.operator) return false;
+  if (filters.action_type && row.action_type !== filters.action_type) return false;
+  if (filters.source_id && row.source_id !== filters.source_id) return false;
+  if (filters.status && row.status !== filters.status) return false;
+  if (filters.date_from && row.decision_at && row.decision_at < filters.date_from) return false;
+  if (filters.date_to && row.decision_at && row.decision_at > auditDateUpperBound(filters.date_to)) return false;
+  return true;
+}
+
+function auditDateUpperBound(value) {
+  return /^\d{4}-\d{2}-\d{2}$/.test(value) ? `${value}T23:59:59.999Z` : value;
+}
+
+function approvalAuditCsv(rows) {
+  const headers = ["action_id", "item_id", "source_id", "operator", "action_type", "status", "risk_level", "decision_at", "executed_at"];
+  return [
+    headers.join(","),
+    ...rows.map((row) => headers.map((header) => csvCell(row[header])).join(","))
+  ].join("\n") + "\n";
+}
+
+function csvCell(value) {
+  const text = String(value ?? "");
+  return /[",\n\r]/.test(text) ? `"${text.replaceAll('"', '""')}"` : text;
 }
 
 async function policyPreview(root, body) {
@@ -603,7 +674,7 @@ function dashboardHtml() {
     const tokenFromUrl = new URL(location.href).searchParams.get("token");
     if (tokenFromUrl) sessionStorage.setItem("intakeToken", tokenFromUrl);
     const token = sessionStorage.getItem("intakeToken") || "";
-    const state = { items: [], sources: [], summary: null, selectedQueue: "", selectedItemId: null, selectedItem: null, selectedSourceId: "", selectedView: "items", sourceDiagnostics: {}, pendingSourceAction: "", policyPreview: null, setupProfile: "email" };
+    const state = { items: [], sources: [], summary: null, selectedQueue: "", selectedItemId: null, selectedSourceId: "", selectedItem: null, selectedView: "items", sourceDiagnostics: {}, pendingSourceAction: "", policyPreview: null, setupProfile: "email", approvalAuditFilters: { operator: "", action_type: "", source_id: "", status: "", date_from: "", date_to: "" } };
     const qs = (s) => document.querySelector(s);
     const el = (tag, attrs = {}, children = []) => {
       const node = document.createElement(tag);
@@ -767,12 +838,46 @@ function dashboardHtml() {
       setStatus("Saved");
     }
     async function renderActions() {
-      const [{ actions }, audit] = await Promise.all([api("/api/actions?limit=100"), api("/api/approval-audit")]);
+      const [{ actions }, audit] = await Promise.all([api("/api/actions?limit=100"), api("/api/approval-audit" + approvalAuditQuery())]);
+      const operator = input("auditOperator", state.approvalAuditFilters.operator);
+      const actionType = input("auditActionType", state.approvalAuditFilters.action_type);
+      const sourceId = input("auditSourceId", state.approvalAuditFilters.source_id);
+      const status = input("auditStatus", state.approvalAuditFilters.status);
+      const dateFrom = input("auditDateFrom", state.approvalAuditFilters.date_from);
+      const dateTo = input("auditDateTo", state.approvalAuditFilters.date_to);
       const auditBlock = el("div", { class: "action-row" }, [
         el("b", { text: "Approval audit" }),
         el("div", { class: "rowmeta" }, [pill("total " + audit.approvals.total)]),
         summaryList("By operator", audit.approvals.by_operator),
-        summaryList("By action type", audit.approvals.by_type)
+        summaryList("By action type", audit.approvals.by_type),
+        summaryList("By source", audit.approvals.by_source),
+        summaryList("By status", audit.approvals.by_status),
+        el("div", { class: "grid2" }, [
+          label("Operator", operator),
+          label("Action type", actionType),
+          label("Source ID", sourceId),
+          label("Status", status),
+          label("Date from", dateFrom),
+          label("Date to", dateTo)
+        ]),
+        el("div", { class: "controls" }, [
+          button("Apply filters", () => {
+            state.approvalAuditFilters = {
+              operator: operator.value,
+              action_type: actionType.value,
+              source_id: sourceId.value,
+              status: status.value,
+              date_from: dateFrom.value,
+              date_to: dateTo.value
+            };
+            renderActions();
+          }, "primary", false, "search"),
+          button("Clear filters", () => {
+            state.approvalAuditFilters = { operator: "", action_type: "", source_id: "", status: "", date_from: "", date_to: "" };
+            renderActions();
+          }, "", false, "x"),
+          button("Export CSV", () => exportApprovalAuditCsv(), "", false, "file-text")
+        ])
       ]);
       qs("#actionsList").replaceChildren(auditBlock, ...actions.map((action) =>
         el("div", { class: "action-row" }, [
@@ -787,6 +892,26 @@ function dashboardHtml() {
           ])
         ])
       ));
+    }
+    function approvalAuditQuery(extra = {}) {
+      const params = new URLSearchParams();
+      const filters = { ...state.approvalAuditFilters, ...extra };
+      for (const [key, value] of Object.entries(filters)) {
+        if (value) params.set(key, value);
+      }
+      const text = params.toString();
+      return text ? "?" + text : "";
+    }
+    async function exportApprovalAuditCsv() {
+      const audit = await api("/api/approval-audit" + approvalAuditQuery({ format: "csv" }));
+      const blob = new Blob([audit.csv || ""], { type: "text/csv" });
+      const url = URL.createObjectURL(blob);
+      const link = el("a", { href: url, download: "intake-approval-audit.csv" });
+      document.body.append(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+      setStatus("Approval audit CSV exported");
     }
     async function actionPost(id, action) {
       await api("/api/actions/" + encodeURIComponent(id) + "/" + action, { method: "POST", body: "{}" });

@@ -114,7 +114,7 @@ The dashboard includes:
 - Intake item review and queue/tag controls.
 - Draft/action approval workflow.
 - Learnings, rules, and audit views.
-- Approval audit summaries by operator and action type.
+- Filterable approval audit summaries by operator, source, action type, status, and date, with CSV export.
 - Policy dry-runs before approving or changing action gates.
 - Per-source test/sync status with pending action feedback.
 - Runtime dashboard token display and rotation.

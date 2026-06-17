@@ -127,6 +127,25 @@ test("dashboard previews policy and summarizes approval audit", async () => {
     assert.equal(audit.approvals.total, 1);
     assert.equal(audit.approvals.by_operator.dashboard, 1);
     assert.equal(audit.approvals.by_type.draft_response, 1);
+    assert.equal(audit.approvals.by_source.manual, 1);
+    assert.equal(audit.approvals.by_status.approved, 1);
+    assert.equal(audit.rows.length, 1);
+    assert.equal(audit.rows[0].source_id, "manual");
+
+    const filtered = await (await fetch(`${base}/api/approval-audit?operator=dashboard&action_type=draft_response&source_id=manual&status=approved&date_from=2000-01-01&date_to=2999-01-01`, { headers })).json();
+    assert.equal(filtered.approvals.total, 1);
+    assert.equal(filtered.rows[0].action_id, draft.action.id);
+
+    const decisionDate = audit.rows[0].decision_at.slice(0, 10);
+    const sameDay = await (await fetch(`${base}/api/approval-audit?date_from=${decisionDate}&date_to=${decisionDate}`, { headers })).json();
+    assert.equal(sameDay.approvals.total, 1);
+
+    const empty = await (await fetch(`${base}/api/approval-audit?operator=other`, { headers })).json();
+    assert.equal(empty.approvals.total, 0);
+
+    const exported = await (await fetch(`${base}/api/approval-audit?operator=dashboard&format=csv`, { headers })).json();
+    assert.match(exported.csv, /^action_id,item_id,source_id,operator,action_type,status,risk_level,decision_at,executed_at/m);
+    assert.match(exported.csv, /draft_response/);
   });
 });
 
