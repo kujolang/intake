@@ -68,6 +68,7 @@ Current status: Intake is ready for local-first live mailbox smoke testing, demo
 - Added package author, repository, bug tracker, homepage, publish files, and public publish metadata while keeping `"private": true`.
 - Added compact item index dedupe keys and skipped full index rebuilds on no-op source syncs.
 - Published local performance baselines in [performance-baselines.md](performance-baselines.md).
+- Added warm dashboard API timings and 100k audit-log baseline to the performance evidence.
 - Added restore drill documentation.
 - Expanded agent-facing docs with stable records, allowed operations, and blocked operations.
 - Added example packs for agencies, SaaS support, solo founders, and internal ops.
@@ -109,9 +110,8 @@ Current status: Intake is ready for local-first live mailbox smoke testing, demo
 
 ## P1: Performance
 
-- Add dashboard API warm-index latency measurements.
-- Decide whether actions and learnings need compact indexes like items.
-- Add 100k audit log baseline in a longer-running benchmark job.
+- Add compact indexes or purpose-built summaries for actions, learnings, and approval audit reads.
+- Add a benchmark threshold gate after action/learning/audit index work lands.
 
 ## P1: Security
 

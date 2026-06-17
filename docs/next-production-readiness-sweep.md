@@ -50,9 +50,8 @@ This is the next-session work queue after the latest local verification sweep. I
 
 ## P1: Performance Evidence
 
-- Add dashboard API warm-index latency measurements.
-- Add a 100k audit log baseline in a longer-running benchmark job.
-- Decide whether actions/learnings need compact indexes like items.
+- Add compact indexes or purpose-built summaries for actions, learnings, and approval audit reads.
+- Add a benchmark threshold gate after action/learning/audit index work lands.
 
 ## P2: Kujo Language Showcase
 
