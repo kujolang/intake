@@ -6,7 +6,9 @@ import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { testSource } from "./adapters/index.js";
 import { buildSourceFromInput, sanitizeSource, sanitizeSources } from "./source-config.js";
-import { initStore, listActions, listItemIndex, listItems, listLearnings, loadAction, loadItem, loadPolicies, loadRules, loadSettings, loadSources, readRaw, saveItem, savePolicies, saveSettings, saveSources, logEvent } from "./storage.js";
+import { initStore, listActions, listItemIndex, listLearnings, loadAction, loadItem, loadPolicies, loadRules, loadSettings, loadSources, readRaw, saveItem, savePolicies, saveSettings, saveSources, logEvent } from "./storage.js";
+import { evaluatePolicy } from "./policy.js";
+import { appendSourceSyncHistory, appendSourceTestHistory } from "./source-history.js";
 import { approveAction, classifyAndSave, createLearning, proposeDraft, rejectAction, runAction, setAutoActions, syncAll } from "./workflow.js";
 import { isoNow, parseCsv, readStreamText, uniq } from "./util.js";
 
@@ -67,7 +69,7 @@ export async function startDashboard(root, options = {}) {
     throw new Error("non-local dashboard binding requires --tls-cert and --tls-key");
   }
   const port = Number(options.port ?? 8787);
-  const token = options.token || process.env.INTAKE_DASHBOARD_TOKEN || randomBytes(24).toString("base64url");
+  let activeToken = options.token || process.env.INTAKE_DASHBOARD_TOKEN || randomBytes(24).toString("base64url");
 
   const handler = async (req, res) => {
     try {
@@ -76,9 +78,15 @@ export async function startDashboard(root, options = {}) {
         return sendHtml(res, dashboardHtml());
       }
       if (url.pathname === "/healthz") return sendJson(res, { ok: true, local_only: true });
-      if (!authorized(req, url, token)) return sendJson(res, { error: "unauthorized" }, 401);
+      if (!authorized(req, url, activeToken)) return sendJson(res, { error: "unauthorized" }, 401);
       const body = await parseBody(req);
-      const result = await routeApi(root, req.method, url, body);
+      const result = await routeApi(root, req.method, url, body, {
+        dashboardToken: () => activeToken,
+        rotateDashboardToken: () => {
+          activeToken = randomBytes(24).toString("base64url");
+          return activeToken;
+        }
+      });
       return sendJson(res, result);
     } catch (error) {
       await logEvent(root, "errors", { event_type: "dashboard_error", status: "failed", error: error.message });
@@ -92,10 +100,10 @@ export async function startDashboard(root, options = {}) {
   await new Promise((resolve) => server.listen(port, host, resolve));
   await logEvent(root, "audit", { event_type: "dashboard_started", status: "ok" });
   const protocol = options.tlsCert && options.tlsKey ? "https" : "http";
-  return { server, host, port: server.address().port, token, url: `${protocol}://${host}:${server.address().port}/?token=${encodeURIComponent(token)}` };
+  return { server, host, port: server.address().port, token: activeToken, url: `${protocol}://${host}:${server.address().port}/?token=${encodeURIComponent(activeToken)}` };
 }
 
-async function routeApi(root, method, url, body) {
+async function routeApi(root, method, url, body, session = {}) {
   const parts = url.pathname.split("/").filter(Boolean);
   if (parts[0] !== "api") throw new Error("not found");
 
@@ -114,6 +122,7 @@ async function routeApi(root, method, url, body) {
     return mutateItem(root, parts[2], parts[3], body);
   }
   if (method === "GET" && parts[1] === "actions" && parts.length === 2) return { actions: await listActions(root, listFiltersFrom(url)) };
+  if (method === "GET" && parts[1] === "approval-audit") return approvalAudit(root);
   if (method === "GET" && parts[1] === "actions" && parts[2]) return { action: await loadAction(root, parts[2]) };
   if (method === "POST" && parts[1] === "actions" && parts[2]) return mutateAction(root, parts[2], parts[3]);
   if (method === "GET" && parts[1] === "sources") return { sources: sanitizeSources(await loadSources(root)) };
@@ -123,8 +132,11 @@ async function routeApi(root, method, url, body) {
   if (method === "GET" && parts[1] === "rules") return { rules: await loadRules(root) };
   if (method === "GET" && parts[1] === "policies") return { policies: await loadPolicies(root) };
   if (method === "POST" && parts[1] === "policies") return updatePolicies(root, body);
+  if (method === "POST" && parts[1] === "policy" && parts[2] === "preview") return policyPreview(root, body);
   if (method === "GET" && parts[1] === "logs") return { logs: await readLogs(root, url.searchParams.get("name") || "audit", listFiltersFrom(url)) };
   if (method === "GET" && parts[1] === "settings") return { settings: await loadSettings(root) };
+  if (method === "GET" && parts[1] === "dashboard-token") return dashboardTokenInfo(session.dashboardToken?.());
+  if (method === "POST" && parts[1] === "dashboard-token" && parts[2] === "rotate") return rotateDashboardToken(root, session.rotateDashboardToken);
   if (method === "POST" && parts[1] === "settings" && parts[2] === "auto-actions") {
     return { settings: await setAutoActions(root, body.enabled === true) };
   }
@@ -134,7 +146,7 @@ async function routeApi(root, method, url, body) {
 
 async function summary(root) {
   const [items, actions, learnings, settings] = await Promise.all([
-    listItems(root),
+    listItemIndex(root),
     listActions(root),
     listLearnings(root),
     loadSettings(root)
@@ -198,6 +210,42 @@ async function mutateAction(root, actionId, action) {
   throw new Error("unknown action command");
 }
 
+async function approvalAudit(root) {
+  const actions = await listActions(root);
+  const byOperator = {};
+  const byType = {};
+  for (const action of actions) {
+    if (!action.approved_by && !action.approved_at) continue;
+    const operator = action.approved_by || "unknown";
+    byOperator[operator] = (byOperator[operator] || 0) + 1;
+    byType[action.type || "unknown"] = (byType[action.type || "unknown"] || 0) + 1;
+  }
+  return {
+    approvals: {
+      total: Object.values(byOperator).reduce((sum, count) => sum + count, 0),
+      by_operator: byOperator,
+      by_type: byType
+    }
+  };
+}
+
+async function policyPreview(root, body) {
+  const itemId = body.item_id || body.itemId;
+  const actionType = body.action_type || body.actionType;
+  if (!itemId || !actionType) throw new Error("policy preview requires item_id and action_type");
+  const item = await requireItem(root, itemId);
+  const sources = await loadSources(root);
+  const source = sources.find((candidate) => candidate.id === item.source_id) || null;
+  const result = evaluatePolicy({
+    item,
+    actionType,
+    policies: await loadPolicies(root),
+    settings: await loadSettings(root),
+    source
+  });
+  return { item_id: item.id, action_type: actionType, result };
+}
+
 async function updateSettings(root, body) {
   const current = await loadSettings(root);
   const next = {
@@ -212,6 +260,22 @@ async function updateSettings(root, body) {
   await saveSettings(root, next);
   await logEvent(root, "audit", { event_type: "dashboard_settings_updated" });
   return { settings: next };
+}
+
+function dashboardTokenInfo(token) {
+  const text = String(token || "");
+  return {
+    token: text ? `${"*".repeat(Math.max(0, text.length - 6))}${text.slice(-6)}` : "",
+    length: text.length,
+    ephemeral: process.env.INTAKE_DASHBOARD_TOKEN ? false : true
+  };
+}
+
+async function rotateDashboardToken(root, rotate) {
+  if (typeof rotate !== "function") throw new Error("dashboard token rotation is unavailable");
+  const token = rotate();
+  await logEvent(root, "audit", { event_type: "dashboard_token_rotated", status: "ok" });
+  return { token, token_info: dashboardTokenInfo(token) };
 }
 
 async function updatePolicies(root, body) {
@@ -267,7 +331,7 @@ async function mutateSource(root, sourceId, action, body) {
     try {
       const result = await testSource(source);
       const testedAt = isoNow();
-      const next = { ...source, last_tested_at: testedAt, last_test_result: result, updated_at: testedAt };
+      const next = appendSourceTestHistory({ ...source, last_tested_at: testedAt, last_test_result: result, updated_at: testedAt }, result, testedAt);
       await saveSources(root, sources.map((candidate) => candidate.id === sourceId ? next : candidate));
       await logEvent(root, result.ok ? "audit" : "errors", {
         source_id: sourceId,
@@ -279,7 +343,7 @@ async function mutateSource(root, sourceId, action, body) {
     } catch (error) {
       const result = { ok: false, errors: [error.message] };
       const testedAt = isoNow();
-      const next = { ...source, last_tested_at: testedAt, last_test_result: result, updated_at: testedAt };
+      const next = appendSourceTestHistory({ ...source, last_tested_at: testedAt, last_test_result: result, updated_at: testedAt }, result, testedAt);
       await saveSources(root, sources.map((candidate) => candidate.id === sourceId ? next : candidate));
       return { result };
     }
@@ -288,7 +352,12 @@ async function mutateSource(root, sourceId, action, body) {
     try {
       return { result: { ok: true, sync: await syncAll(root, sourceId) } };
     } catch (error) {
-      return { result: { ok: false, errors: [error.message] } };
+      const syncedAt = isoNow();
+      const result = { ok: false, errors: [error.message] };
+      const next = appendSourceSyncHistory({ ...source, last_synced_at: syncedAt, last_sync_result: result, updated_at: syncedAt }, result, syncedAt);
+      await saveSources(root, sources.map((candidate) => candidate.id === sourceId ? next : candidate));
+      await logEvent(root, "errors", { source_id: sourceId, event_type: "dashboard_source_sync_failed", status: "failed", error: error.message });
+      return { result };
     }
   }
   throw new Error("unknown source command");
@@ -524,7 +593,7 @@ function dashboardHtml() {
     const tokenFromUrl = new URL(location.href).searchParams.get("token");
     if (tokenFromUrl) sessionStorage.setItem("intakeToken", tokenFromUrl);
     const token = sessionStorage.getItem("intakeToken") || "";
-    const state = { items: [], sources: [], summary: null, selectedQueue: "", selectedItemId: null, selectedItem: null, selectedSourceId: "", selectedView: "items", sourceDiagnostics: {} };
+    const state = { items: [], sources: [], summary: null, selectedQueue: "", selectedItemId: null, selectedItem: null, selectedSourceId: "", selectedView: "items", sourceDiagnostics: {}, pendingSourceAction: "", policyPreview: null };
     const qs = (s) => document.querySelector(s);
     const el = (tag, attrs = {}, children = []) => {
       const node = document.createElement(tag);
@@ -688,8 +757,14 @@ function dashboardHtml() {
       setStatus("Saved");
     }
     async function renderActions() {
-      const { actions } = await api("/api/actions?limit=100");
-      qs("#actionsList").replaceChildren(...actions.map((action) =>
+      const [{ actions }, audit] = await Promise.all([api("/api/actions?limit=100"), api("/api/approval-audit")]);
+      const auditBlock = el("div", { class: "action-row" }, [
+        el("b", { text: "Approval audit" }),
+        el("div", { class: "rowmeta" }, [pill("total " + audit.approvals.total)]),
+        summaryList("By operator", audit.approvals.by_operator),
+        summaryList("By action type", audit.approvals.by_type)
+      ]);
+      qs("#actionsList").replaceChildren(auditBlock, ...actions.map((action) =>
         el("div", { class: "action-row" }, [
           el("b", { text: action.type + " · " + action.status }),
           el("div", { class: "muted", text: action.id + " · " + action.intake_item_id }),
@@ -714,7 +789,9 @@ function dashboardHtml() {
       renderSourceEditor(selected);
       qs("#sourcesList").replaceChildren(
         ...(state.sources.length === 0 ? [firstRunSourcesPanel()] : []),
-        ...state.sources.map((source) => el("div", { class: "source-row" }, [
+        ...state.sources.map((source) => {
+          const pending = state.pendingSourceAction === source.id;
+          return el("div", { class: "source-row" }, [
           el("b", { text: source.name + " · " + source.type }),
           el("div", { class: "rowmeta" }, [
             pill(source.id),
@@ -724,14 +801,16 @@ function dashboardHtml() {
             pill(source.last_sync_result ? "sync " + (source.last_sync_result.saved_count || 0) : "not synced")
           ]),
           el("div", { class: "muted", text: source.type === "email" ? (source.config.username || "email account") : JSON.stringify(source.config || {}) }),
+          source.last_synced_at ? el("div", { class: "muted", text: "Last sync " + source.last_synced_at + " · saved " + (source.last_sync_result?.saved_count || 0) }) : "",
           el("div", { class: "controls" }, [
-            button("Edit", () => { state.selectedSourceId = source.id; renderSources(); }, "", false, "edit"),
-            button(source.enabled ? "Disable" : "Enable", () => sourcePost(source.id, source.enabled ? "disable" : "enable", {}), "", false, "power"),
-            button("Test", () => sourcePost(source.id, "test", {}), "", false, "shield"),
-            button("Sync", () => sourcePost(source.id, "sync", {}), "primary", false, "cloud-download"),
-            button("Remove", () => sourcePost(source.id, "remove", {}), "danger", false, "x")
+            button("Edit", () => { state.selectedSourceId = source.id; renderSources(); }, "", pending, "edit"),
+            button(source.enabled ? "Disable" : "Enable", () => sourcePost(source.id, source.enabled ? "disable" : "enable", {}), "", pending, "power"),
+            button(pending ? "Working" : "Test", () => sourcePost(source.id, "test", {}), "", pending, "shield"),
+            button(pending ? "Working" : "Sync", () => sourcePost(source.id, "sync", {}), "primary", pending, "cloud-download"),
+            button("Remove", () => sourcePost(source.id, "remove", {}), "danger", pending, "x")
           ])
-        ]))
+        ]);
+        })
       );
     }
     function firstRunSourcesPanel() {
@@ -751,6 +830,8 @@ function dashboardHtml() {
       const imap = cfg.imap || {};
       const smtp = cfg.smtp || {};
       const secret = parseSecretRef(source?.secret_ref || "");
+      const quarantine = el("input", { id: "sourceQuarantineAttachments", type: "checkbox" });
+      quarantine.checked = cfg.quarantine_attachments === true;
       qs("#sourceEditor").replaceChildren(
         el("div", { class: "source-form" }, [
           label("Type", select("sourceType", ["email", "file", "webhook", "slack", "github", "jira", "linear", "clickup", "manual"], type)),
@@ -772,6 +853,9 @@ function dashboardHtml() {
           label("Webhook port", input("sourcePort", cfg.port || 8765)),
           label("Webhook path", input("sourceWebhookPath", cfg.path || "")),
           label("Workspace URL", input("sourceWorkspaceUrl", cfg.workspace_url || "")),
+          label("Provider repo", input("sourceRepository", cfg.repository || "")),
+          label("API token env", input("sourceApiTokenEnv", parseEnvRef(cfg.api_token_ref || ""))),
+          checkboxLabel("Quarantine attachments", quarantine),
           el("div", { class: "controls wide" }, [
             button(source ? "Save source" : "Add source", () => saveSource(source), "", false, source ? "device-floppy" : "plus"),
             button("New email", () => { state.selectedSourceId = ""; renderSourceEditor(null); }, "", false, "mail"),
@@ -820,7 +904,10 @@ function dashboardHtml() {
         from: qs("#sourceFrom").value,
         path: pathValue,
         port: qs("#sourcePort").value,
-        workspace_url: qs("#sourceWorkspaceUrl").value
+        workspace_url: qs("#sourceWorkspaceUrl").value,
+        repository: qs("#sourceRepository").value,
+        api_token_env: qs("#sourceApiTokenEnv").value,
+        quarantine_attachments: qs("#sourceQuarantineAttachments").checked
       };
     }
     function parseSecretRef(ref) {
@@ -829,6 +916,9 @@ function dashboardHtml() {
         return { kind: "keychain", env: "", service: parts[1] || "kujo-intake", account: parts[2] || "" };
       }
       return { kind: "env", env: ref.replace(/^env:/, ""), service: "kujo-intake", account: "" };
+    }
+    function parseEnvRef(ref) {
+      return String(ref || "").replace(/^env:/, "");
     }
     async function saveSource(source) {
       const payload = sourcePayload(source);
@@ -841,14 +931,20 @@ function dashboardHtml() {
       setStatus("Source saved");
     }
     async function sourcePost(id, action, payload) {
-      setStatus(action + "...");
-      const result = await api("/api/sources/" + encodeURIComponent(id) + "/" + action, { method: "POST", body: JSON.stringify(payload) });
-      if (action === "test") state.sourceDiagnostics[id] = result.result;
-      await load();
-      state.selectedView = "sources";
-      state.selectedSourceId = id;
-      renderCurrent();
-      setStatus(action === "test" ? sourceTestSummary(result.result) : "Done");
+      try {
+        state.pendingSourceAction = id;
+        setStatus(action + "...");
+        renderSources();
+        const result = await api("/api/sources/" + encodeURIComponent(id) + "/" + action, { method: "POST", body: JSON.stringify(payload) });
+        if (action === "test") state.sourceDiagnostics[id] = result.result;
+        await load();
+        state.selectedView = "sources";
+        state.selectedSourceId = id;
+        setStatus(action === "test" ? sourceTestSummary(result.result) : "Done");
+      } finally {
+        state.pendingSourceAction = "";
+        renderCurrent();
+      }
     }
     function renderSourceDiagnostics(source) {
       const result = state.sourceDiagnostics[source.id] || source.last_test_result;
@@ -862,10 +958,13 @@ function dashboardHtml() {
       return el("div", { class: "diagnostics" }, [
         el("b", { text: result.ok ? "Readiness passed" : "Readiness needs attention" }),
         source.last_tested_at ? el("div", { class: "muted", text: "Last tested " + source.last_tested_at }) : "",
+        source.last_synced_at ? el("div", { class: "muted", text: "Last synced " + source.last_synced_at + " · saved " + (source.last_sync_result?.saved_count || 0) + " · cursor " + (source.last_sync_result?.cursor || "none") }) : "",
         diagnosticRow("Config", checks.config || { ok: result.ok, errors: result.errors || [] }),
         diagnosticRow("IMAP", checks.imap || { ok: result.ok }),
         diagnosticRow("SMTP", checks.smtp || { ok: result.ok }),
-        result.errors?.length ? el("div", { class: "muted", text: result.errors.join(" · ") }) : ""
+        result.errors?.length ? el("div", { class: "muted", text: result.errors.join(" · ") }) : "",
+        source.test_history?.length ? historyBlock("Test history", source.test_history, (row) => (row.ok ? "ok" : "failed") + " · " + row.at) : "",
+        source.sync_history?.length ? historyBlock("Sync history", source.sync_history, (row) => (row.ok ? "ok" : "failed") + " · saved " + (row.saved_count || 0) + " · " + row.at) : ""
       ]);
     }
     function diagnosticRow(name, check) {
@@ -897,7 +996,7 @@ function dashboardHtml() {
       qs("#logsList").replaceChildren(...logs.map((log) => el("div", { class: "log-row", text: JSON.stringify(log) })));
     }
     async function renderSettings() {
-      const [{ settings }, { policies }] = await Promise.all([api("/api/settings"), api("/api/policies")]);
+      const [{ settings }, { policies }, tokenInfo] = await Promise.all([api("/api/settings"), api("/api/policies"), api("/api/dashboard-token")]);
       const auto = el("input", { id: "settingsAuto", type: "checkbox" });
       auto.checked = settings.auto_actions_enabled === true;
       const aiEnabled = el("input", { id: "settingsAiEnabled", type: "checkbox" });
@@ -907,6 +1006,9 @@ function dashboardHtml() {
       const recall = input("settingsRecall", settings.totalrecall_export_dir || "");
       const policyText = el("textarea", { id: "policyJson" });
       policyText.value = JSON.stringify(policies, null, 2);
+      const previewItem = input("policyPreviewItem", state.selectedItemId || state.items[0]?.id || "");
+      const previewAction = input("policyPreviewAction", "draft_response");
+      const previewResult = state.policyPreview ? el("pre", { text: JSON.stringify(state.policyPreview, null, 2) }) : el("div", { class: "muted", text: "Run a dry-run to see policy reasons before approving or changing policy." });
       qs("#settingsPanel").replaceChildren(
         el("div", { class: "source-row" }, [
           el("b", { text: "Runtime settings" }),
@@ -931,6 +1033,23 @@ function dashboardHtml() {
           }, "primary", false, "device-floppy")])
         ]),
         el("div", { class: "source-row" }, [
+          el("b", { text: "Dashboard token" }),
+          el("div", { class: "rowmeta" }, [
+            pill("length " + tokenInfo.length),
+            pill(tokenInfo.ephemeral ? "runtime token" : "env token"),
+            pill(tokenInfo.token || "none")
+          ]),
+          el("div", { class: "muted", text: "Rotation is in-memory for the active dashboard session. Set INTAKE_DASHBOARD_TOKEN for a stable token on restart." }),
+          el("div", { class: "controls" }, [button("Rotate token", async () => {
+            const rotated = await api("/api/dashboard-token/rotate", { method: "POST", body: "{}" });
+            sessionStorage.setItem("intakeToken", rotated.token);
+            history.replaceState(null, "", "/?token=" + encodeURIComponent(rotated.token));
+            await load();
+            state.selectedView = "settings";
+            setStatus("Dashboard token rotated");
+          }, "danger", false, "key")])
+        ]),
+        el("div", { class: "source-row" }, [
           el("b", { text: "Policies" }),
           el("div", { class: "muted", text: "Edit policy JSON carefully. Direct sends remain blocked unless policy explicitly changes." }),
           policyText,
@@ -941,6 +1060,20 @@ function dashboardHtml() {
             state.selectedView = "settings";
             setStatus("Policies saved");
           }, "primary", false, "device-floppy")])
+        ]),
+        el("div", { class: "source-row" }, [
+          el("b", { text: "Policy dry-run" }),
+          el("div", { class: "grid2" }, [
+            label("Item ID", previewItem),
+            label("Action type", previewAction)
+          ]),
+          el("div", { class: "controls" }, [button("Preview policy", async () => {
+            state.policyPreview = await api("/api/policy/preview", { method: "POST", body: JSON.stringify({ item_id: previewItem.value, action_type: previewAction.value }) });
+            state.selectedView = "settings";
+            renderSettings();
+            setStatus("Policy preview ready");
+          }, "primary", false, "shield")]),
+          previewResult
         ])
       );
     }
@@ -948,6 +1081,19 @@ function dashboardHtml() {
       return el("label", { class: "work-field" }, [el("span", { text }), control]);
     }
     function info(label, value) { return el("div", { class: "field" }, [el("b", { text: label }), el("div", { class: "muted", text: value })]); }
+    function summaryList(label, values) {
+      const entries = Object.entries(values || {});
+      return el("div", { class: "field" }, [
+        el("b", { text: label }),
+        el("div", { class: "rowmeta" }, entries.length ? entries.map(([key, value]) => pill(key + " " + value)) : [pill("none")])
+      ]);
+    }
+    function historyBlock(label, rows, format) {
+      return el("div", { class: "field" }, [
+        el("b", { text: label }),
+        el("div", { class: "stack" }, rows.slice(0, 5).map((row) => el("div", { class: "muted", text: format(row) })))
+      ]);
+    }
     function pill(text, cls = "") { return el("span", { class: "pill " + cls, text: text || "none" }); }
     function icon(name) {
       const wrap = el("span", { class: "icon-wrap" });

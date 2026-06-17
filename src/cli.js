@@ -17,6 +17,7 @@ import { purgeItems, applyRetention } from "./retention.js";
 import { explainRules, proposeRuleFromItem } from "./rules.js";
 import { printJson, printTable } from "./render.js";
 import { buildSourceFromInput, sanitizeSources } from "./source-config.js";
+import { appendSourceTestHistory } from "./source-history.js";
 import { getSourceTemplate, listSourceTemplates } from "./source-templates.js";
 import {
   initStore,
@@ -164,12 +165,12 @@ async function cmdSource(root, subcommand, args, flags) {
     if (!source) throw new Error(`no such source: ${args[0]}`);
     const result = await testSource(source);
     const testedAt = isoNow();
-    await saveSources(root, sources.map((candidate) => candidate.id === source.id ? {
+    await saveSources(root, sources.map((candidate) => candidate.id === source.id ? appendSourceTestHistory({
       ...candidate,
       last_tested_at: testedAt,
       last_test_result: result,
       updated_at: testedAt
-    } : candidate));
+    }, result, testedAt) : candidate));
     await logEvent(root, result.ok ? "audit" : "errors", {
       source_id: source.id,
       event_type: "source_tested",

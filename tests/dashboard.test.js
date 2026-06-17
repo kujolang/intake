@@ -6,7 +6,7 @@ import { join } from "node:path";
 import { createManualItem } from "../src/adapters/manual.js";
 import { startDashboard } from "../src/dashboard.js";
 import { makeSource } from "../src/models.js";
-import { initStore, saveItem, saveSources } from "../src/storage.js";
+import { initStore, loadSources, saveItem, saveSources } from "../src/storage.js";
 import { classifyAndSave } from "../src/workflow.js";
 
 async function withDashboard(fn) {
@@ -107,6 +107,72 @@ test("dashboard updates runtime settings and policies", async () => {
   });
 });
 
+test("dashboard previews policy and summarizes approval audit", async () => {
+  await withDashboard(async (dashboard, item) => {
+    const base = `http://${dashboard.host}:${dashboard.port}`;
+    const headers = { "x-intake-token": "test-token", "content-type": "application/json" };
+    const draft = await (await fetch(`${base}/api/items/${item.id}/draft`, { method: "POST", headers, body: "{}" })).json();
+    await fetch(`${base}/api/actions/${draft.action.id}/approve`, { method: "POST", headers, body: "{}" });
+
+    const preview = await (await fetch(`${base}/api/policy/preview`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ item_id: item.id, action_type: "send_response" })
+    })).json();
+    assert.equal(preview.item_id, item.id);
+    assert.equal(preview.result.blocked, true);
+    assert.ok(preview.result.reasons.includes("action is in blocked_actions"));
+
+    const audit = await (await fetch(`${base}/api/approval-audit`, { headers })).json();
+    assert.equal(audit.approvals.total, 1);
+    assert.equal(audit.approvals.by_operator.dashboard, 1);
+    assert.equal(audit.approvals.by_type.draft_response, 1);
+  });
+});
+
+test("dashboard can rotate its runtime API token", async () => {
+  await withDashboard(async (dashboard) => {
+    const base = `http://${dashboard.host}:${dashboard.port}`;
+    const headers = { "x-intake-token": "test-token", "content-type": "application/json" };
+    const info = await (await fetch(`${base}/api/dashboard-token`, { headers })).json();
+    assert.equal(info.length, "test-token".length);
+    assert.ok(info.token.endsWith("-token"));
+    assert.ok(info.token.startsWith("*"));
+
+    const rotated = await (await fetch(`${base}/api/dashboard-token/rotate`, { method: "POST", headers, body: "{}" })).json();
+    assert.ok(rotated.token);
+    assert.notEqual(rotated.token, "test-token");
+
+    const oldTokenResponse = await fetch(`${base}/api/summary`, { headers });
+    assert.equal(oldTokenResponse.status, 401);
+    const newTokenSummary = await fetch(`${base}/api/summary`, { headers: { "x-intake-token": rotated.token } });
+    assert.equal(newTokenSummary.status, 200);
+  });
+});
+
+test("dashboard persists failed source sync status", async () => {
+  const root = await mkdtemp(join(tmpdir(), "intake-dashboard-sync-test-"));
+  let dashboard;
+  try {
+    await initStore(root);
+    const source = makeSource("file", { id: "missing-file", name: "Missing File", config: { path: join(root, "missing") } });
+    await saveSources(root, [source]);
+    dashboard = await startDashboard(root, { port: 0, token: "test-token" });
+    const base = `http://${dashboard.host}:${dashboard.port}`;
+    const headers = { "x-intake-token": "test-token", "content-type": "application/json" };
+    const sync = await (await fetch(`${base}/api/sources/missing-file/sync`, { method: "POST", headers, body: "{}" })).json();
+    assert.equal(sync.result.ok, false);
+    const [saved] = await loadSources(root);
+    assert.equal(saved.last_sync_result.ok, false);
+    assert.equal(saved.sync_history.length, 1);
+    assert.equal(saved.sync_history[0].ok, false);
+    assert.ok(saved.last_synced_at);
+  } finally {
+    if (dashboard) await new Promise((resolve) => dashboard.server.close(resolve));
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test("dashboard manages email sources without storing mailbox passwords", async () => {
   await withDashboard(async (dashboard) => {
     const base = `http://${dashboard.host}:${dashboard.port}`;
@@ -156,6 +222,8 @@ test("dashboard manages email sources without storing mailbox passwords", async 
     const testedSource = testedSources.sources.find((source) => source.id === "support-email");
     assert.equal(testedSource.last_test_result.ok, false);
     assert.ok(testedSource.last_tested_at);
+    assert.equal(testedSource.test_history.length, 1);
+    assert.equal(testedSource.test_history[0].ok, false);
 
     const removed = await (await fetch(`${base}/api/sources/support-email/remove`, {
       method: "POST",
@@ -202,5 +270,15 @@ test("dashboard rejects oversized request bodies", async () => {
       body: "x".repeat(1024 * 1024 + 1)
     });
     assert.equal(response.status, 413);
+  });
+});
+
+test("dashboard HTML keeps icon controls accessible", async () => {
+  await withDashboard(async (dashboard) => {
+    const html = await (await fetch(`http://${dashboard.host}:${dashboard.port}/?token=test-token`)).text();
+    assert.match(html, /aria-label="Auto-actions off"/);
+    assert.match(html, /aria-label="Refresh"/);
+    assert.match(html, /data-view="settings"/);
+    assert.match(html, /id="logSelect"/);
   });
 });
