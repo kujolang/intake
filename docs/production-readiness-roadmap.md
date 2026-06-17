@@ -70,6 +70,7 @@ Current status: Intake is ready for local-first live mailbox smoke testing, demo
 - Published local performance baselines in [performance-baselines.md](performance-baselines.md).
 - Added warm dashboard API timings and 100k audit-log baseline to the performance evidence.
 - Added compact action and learning indexes so dashboard action, learning, summary, and approval-audit reads stay under 125 ms in local baselines.
+- Added `npm run bench:gate` to enforce warm dashboard and repeated-sync performance thresholds.
 - Added restore drill documentation.
 - Expanded agent-facing docs with stable records, allowed operations, and blocked operations.
 - Added example packs for agencies, SaaS support, solo founders, and internal ops.
@@ -88,7 +89,8 @@ Current status: Intake is ready for local-first live mailbox smoke testing, demo
 ## P0: Packaging And Distribution
 
 - Keep `"private": true` until live-source gates and remote CI are proven.
-- Run the GitHub Actions workflow in the remote repository and capture the result before tagging or publishing.
+- Run the GitHub Actions workflow in the remote repository and capture a passing result before tagging or publishing.
+- Current remote workflow runs are blocked by GitHub billing/spending-limit settings, not by a local test failure.
 
 ## P0: Data Lifecycle
 
@@ -111,7 +113,6 @@ Current status: Intake is ready for local-first live mailbox smoke testing, demo
 
 ## P1: Performance
 
-- Add a benchmark threshold gate for warm dashboard endpoints and repeated no-op sync.
 - Add longer-duration trend checks for audit-log growth and backup/restore timing.
 
 ## P1: Security

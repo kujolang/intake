@@ -395,11 +395,12 @@ Run the local quality gate:
 
 ```sh
 npm run verify
+npm run bench:gate
 npm run bench -- --items 1000 --logs 10000 --fileRows 1000 --actions 1000 --learnings 1000
 npm run bench -- --items 100 --logs 100000 --fileRows 0 --actions 0 --learnings 0 --dashboard false
 ```
 
-The built-in test and eval suite covers routing and safety cases from the original build prompt, including refunds, legal threats, prompt injection, Slack-style bug reports, webhook payloads, generated high-volume sync dedupe, learning generation, dashboard policy previews, and auto-action policy checks.
+The built-in test and eval suite covers routing and safety cases from the original build prompt, including refunds, legal threats, prompt injection, Slack-style bug reports, webhook payloads, generated high-volume sync dedupe, learning generation, dashboard policy previews, and auto-action policy checks. The benchmark gate enforces warm dashboard and repeated-sync latency thresholds so performance regressions fail locally before release.
 
 ## Project Structure
 

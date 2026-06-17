@@ -5,7 +5,9 @@ Use this checklist before publishing or presenting Kujo Intake as a release cand
 ## Code Gate
 
 - Run `npm run verify`.
+- Run `npm run bench:gate`.
 - Confirm unit, smoke, eval, and audit gates pass.
+- Confirm the benchmark gate reports `ok: true`.
 - Confirm `node bin/intake.js doctor` passes against a clean demo store.
 - Confirm root files are intentional: `README.md`, `CHANGELOG.md`, `LICENSE`, `package.json`, `package-lock.json`, `.gitignore`, `.github/`, `bin/`, `src/`, `tests/`, `scripts/`, and `docs/`.
 

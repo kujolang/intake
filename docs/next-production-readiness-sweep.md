@@ -19,7 +19,7 @@ This is the next-session work queue after the latest local verification sweep. I
 
 - Decide whether this package is ready to remove `"private": true`.
 - Reconfirm package metadata before release: author, repository, homepage, bugs, license, bin, files, engines, publish config, and changelog.
-- Run the GitHub Actions verify workflow in the remote repository.
+- Run the GitHub Actions verify workflow in the remote repository after GitHub billing/spending-limit settings allow jobs to start.
 - Run `npm pack --dry-run` and compare package contents against the release checklist.
 - Confirm root files are intentional: `README.md`, `CHANGELOG.md`, `LICENSE`, `package.json`, `package-lock.json`, `.github/`, `bin/`, `src/`, `tests/`, `scripts/`, and `docs/`.
 
@@ -50,7 +50,6 @@ This is the next-session work queue after the latest local verification sweep. I
 
 ## P1: Performance Evidence
 
-- Add a benchmark threshold gate for warm dashboard endpoints and repeated no-op sync.
 - Add longer-duration trend checks for audit-log growth and backup/restore timing.
 
 ## P2: Kujo Language Showcase

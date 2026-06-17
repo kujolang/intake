@@ -15,10 +15,13 @@ These are local development baselines for detecting regressions. They are not ve
 ## Commands
 
 ```sh
+npm run bench:gate
 npm run bench -- --items 1000 --logs 10000 --fileRows 1000 --actions 1000 --learnings 1000
 npm run bench -- --items 10000 --logs 0 --fileRows 0 --actions 1000 --learnings 1000
 npm run bench -- --items 100 --logs 100000 --fileRows 0 --actions 0 --learnings 0 --dashboard false
 ```
+
+`npm run bench:gate` runs a smaller repeatable benchmark and fails when warm dashboard reads or repeated no-op sync exceed release thresholds. Use the larger commands below it to refresh baseline evidence when storage, dashboard, or adapter behavior changes.
 
 ## Results
 

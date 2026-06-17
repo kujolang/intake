@@ -5,7 +5,7 @@ Current decision: keep Kujo Intake private while it is being hardened as a showc
 ## Why `private: true` Remains
 
 - Live PrivateEmail and Slack smoke tests still need to be completed with disposable real accounts.
-- Remote CI still needs to be run and captured in GitHub.
+- Remote CI still needs a passing run captured in GitHub; current jobs are blocked by GitHub billing/spending-limit settings before they start.
 - Storage migration hooks exist, but there has not yet been a real schema migration.
 - Dashboard first-run onboarding is not complete.
 - GitHub has provider-aware webhook intake and approved comment writeback, but Jira, Linear, and ClickUp still need provider-native writeback actions.

@@ -41,6 +41,7 @@
     "lint": "node --check bin/intake.js && find src tests scripts -name '*.js' -o -name '*.mjs' | xargs -n1 node --check",
     "verify": "npm run lint && npm test && npm run smoke && node bin/intake.js eval run && npm audit --audit-level=high",
     "bench": "node scripts/bench.mjs",
+    "bench:gate": "node scripts/bench-threshold.mjs",
     "intake": "node bin/intake.js"
   },
   "dependencies": {
