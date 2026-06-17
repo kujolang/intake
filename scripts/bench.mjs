@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { createManualItem } from "../src/adapters/manual.js";
 import { startDashboard } from "../src/dashboard.js";
 import { makeAction, makeLearning, makeSource } from "../src/models.js";
-import { initStore, listItemIndex, logEvent, saveAction, saveItem, saveLearning, saveSources } from "../src/storage.js";
+import { initStore, listItemIndex, logEvent, rebuildActionIndex, rebuildLearningIndex, saveAction, saveItem, saveLearning, saveSources } from "../src/storage.js";
 import { syncAll } from "../src/workflow.js";
 import { isoNow } from "../src/util.js";
 
@@ -45,25 +45,29 @@ try {
     for (let index = 0; index < actions; index += 1) {
       await saveAction(root, makeAction({
         intake_item_id: itemIds[index % Math.max(1, itemIds.length)] || `bench-item-${index}`,
+        source_id: "manual",
         type: index % 4 === 0 ? "mark_resolved" : "draft_response",
         status: index % 3 === 0 ? "approved" : "proposed",
         approved_by: index % 3 === 0 ? "benchmark" : null,
         approved_at: index % 3 === 0 ? isoNow() : null,
         body: "Benchmark action body"
-      }));
+      }), { rebuildIndex: false });
     }
+    await rebuildActionIndex(root);
   });
 
   const insertLearnings = await measure(`insert_${learnings}_learnings`, async () => {
     for (let index = 0; index < learnings; index += 1) {
       await saveLearning(root, makeLearning({
         source_item_ids: [itemIds[index % Math.max(1, itemIds.length)] || `bench-item-${index}`],
+        source_id: "manual",
         title: `Benchmark learning ${index}`,
         summary: "Benchmark learning summary",
         status: index % 2 === 0 ? "approved" : "proposed",
         confidence: 0.8
-      }));
+      }), { rebuildIndex: false });
     }
+    await rebuildLearningIndex(root);
   });
 
   const writeLogs = await measure(`write_${logs}_audit_logs`, async () => {

@@ -138,6 +138,7 @@ export async function proposeDraft(root, itemId, options = {}) {
   const policyResult = evaluatePolicy({ item, actionType: "draft_response", policies, settings, source });
   const action = makeAction({
     intake_item_id: item.id,
+    source_id: item.source_id,
     type: "draft_response",
     status: policyResult.requires_human_review ? "needs_review" : "proposed",
     body,
@@ -270,6 +271,7 @@ export async function createLearning(root, itemId, input = {}) {
   const item = await requireItem(root, itemId);
   const learning = makeLearning({
     source_item_ids: [item.id],
+    source_id: item.source_id,
     type: input.type || (item.tags?.includes("faq-candidate") ? "faq_candidate" : "item_learning"),
     title: input.title || `Learning from ${item.title}`,
     summary: input.summary || item.ai_summary || deterministicSummary(item),

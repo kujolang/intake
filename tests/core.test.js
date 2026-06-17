@@ -8,7 +8,7 @@ import { createManualItem } from "../src/adapters/manual.js";
 import { makeAction, makeItem, makeLearning, makeSource } from "../src/models.js";
 import { evaluatePolicy } from "../src/policy.js";
 import { exportStrataDaily, exportTotalRecall } from "../src/exports.js";
-import { deleteItem, initStore, listActions, listItemIndex, listItems, listLearnings, loadItem, loadSettings, loadSources, readRaw, saveAction, saveItem, saveLearning, savePolicies, saveSettings, saveSources, storeRaw } from "../src/storage.js";
+import { deleteAction, deleteLearning, deleteItem, initStore, listActionIndex, listActions, listItemIndex, listItems, listLearningIndex, listLearnings, loadItem, loadSettings, loadSources, readRaw, saveAction, saveItem, saveLearning, savePolicies, saveSettings, saveSources, storeRaw } from "../src/storage.js";
 import { approveAction, classifyAndSave, proposeDraft, runAction, syncAll } from "../src/workflow.js";
 
 async function withStore(fn) {
@@ -176,15 +176,26 @@ test("item index updates incrementally on item save and delete", async () => {
 test("actions and learnings support bounded list reads", async () => {
   await withStore(async (root) => {
     for (const index of [1, 2, 3]) {
-      await saveAction(root, makeAction({ intake_item_id: `item-${index}`, type: "draft_response", status: index === 1 ? "approved" : "proposed" }));
+      await saveAction(root, makeAction({ intake_item_id: `item-${index}`, source_id: "manual", type: "draft_response", status: index === 1 ? "approved" : "proposed", body: `Action body ${index}` }));
       await saveLearning(root, makeLearning({ title: `Learning ${index}`, summary: "Useful note", status: index === 1 ? "approved" : "proposed" }));
     }
     const actions = await listActions(root, { limit: 2 });
+    const actionIndex = await listActionIndex(root, { limit: 2 });
     const proposedActions = await listActions(root, { status: "proposed", limit: 10 });
     const learnings = await listLearnings(root, { limit: 2, offset: 1 });
+    const learningIndex = await listLearningIndex(root, { limit: 2 });
     assert.equal(actions.length, 2);
+    assert.ok(actions[0].body);
+    assert.equal(actionIndex[0].body, undefined);
+    assert.equal(actionIndex[0].source_id, "manual");
     assert.equal(proposedActions.length, 2);
     assert.equal(learnings.length, 2);
+    assert.ok(learnings[0].summary);
+    assert.equal(learningIndex[0].summary, undefined);
+    await deleteAction(root, actions[0].id);
+    await deleteLearning(root, learnings[0].id);
+    assert.equal((await listActionIndex(root)).some((action) => action.id === actions[0].id), false);
+    assert.equal((await listLearningIndex(root)).some((learning) => learning.id === learnings[0].id), false);
   });
 });
 

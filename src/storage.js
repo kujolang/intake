@@ -155,36 +155,50 @@ export async function listItemDedupeKeys(root) {
   return items.map((item) => item.dedupe_key);
 }
 
-export async function saveAction(root, action) {
+export async function saveAction(root, action, options = {}) {
   await writeJsonAtomic(recordPath(root, "actions", action.id, "action id"), action);
+  if (options.rebuildIndex !== false) await upsertActionIndex(root, action);
 }
 
 export async function loadAction(root, id) {
   return readJson(recordPath(root, "actions", id, "action id"), null);
 }
 
-export async function deleteAction(root, id) {
+export async function deleteAction(root, id, options = {}) {
   await rm(recordPath(root, "actions", id, "action id"), { force: true });
+  if (options.rebuildIndex !== false) await removeRecordFromIndex(root, "actions", id);
 }
 
 export async function listActions(root, filters = {}) {
-  return listRecords(join(root, "actions"), filters);
+  const rows = await listActionIndex(root, filters);
+  return hydrateRecords(root, "actions", rows.map((row) => row.id), "action id");
 }
 
-export async function saveLearning(root, learning) {
+export async function listActionIndex(root, filters = {}) {
+  return listRecordIndex(root, "actions", filters, rebuildActionIndex);
+}
+
+export async function saveLearning(root, learning, options = {}) {
   await writeJsonAtomic(recordPath(root, "learnings", learning.id, "learning id"), learning);
+  if (options.rebuildIndex !== false) await upsertLearningIndex(root, learning);
 }
 
 export async function loadLearning(root, id) {
   return readJson(recordPath(root, "learnings", id, "learning id"), null);
 }
 
-export async function deleteLearning(root, id) {
+export async function deleteLearning(root, id, options = {}) {
   await rm(recordPath(root, "learnings", id, "learning id"), { force: true });
+  if (options.rebuildIndex !== false) await removeRecordFromIndex(root, "learnings", id);
 }
 
 export async function listLearnings(root, filters = {}) {
-  return listRecords(join(root, "learnings"), filters);
+  const rows = await listLearningIndex(root, filters);
+  return hydrateRecords(root, "learnings", rows.map((row) => row.id), "learning id");
+}
+
+export async function listLearningIndex(root, filters = {}) {
+  return listRecordIndex(root, "learnings", filters, rebuildLearningIndex);
 }
 
 async function listRecords(dir, filters) {
@@ -201,6 +215,24 @@ async function listRecords(dir, filters) {
     if (row && matchesFilters(row, filters)) rows.push(row);
   }
   return paginateRows(rows.sort(sortRecords), filters);
+}
+
+async function hydrateRecords(root, collection, ids, label) {
+  const rows = [];
+  for (const id of ids) {
+    const row = await readJson(recordPath(root, collection, id, label), null);
+    if (row) rows.push(row);
+  }
+  return rows;
+}
+
+async function listRecordIndex(root, collection, filters, rebuild) {
+  const rows = await readJson(join(root, "index", `${collection}.json`), null);
+  if (!Array.isArray(rows)) {
+    await rebuild(root);
+    return listRecordIndex(root, collection, filters, rebuild);
+  }
+  return paginateRows(rows.filter((row) => matchesFilters(row, filters)).sort(sortRecords), filters);
 }
 
 function matchesFilters(row, filters) {
@@ -273,6 +305,16 @@ export async function rebuildItemIndex(root) {
   await writeJsonAtomic(join(root, "index", "items.json"), compact);
 }
 
+export async function rebuildActionIndex(root) {
+  const actions = await listRecords(join(root, "actions"), {});
+  await writeJsonAtomic(join(root, "index", "actions.json"), actions.map(compactActionRow));
+}
+
+export async function rebuildLearningIndex(root) {
+  const learnings = await listRecords(join(root, "learnings"), {});
+  await writeJsonAtomic(join(root, "index", "learnings.json"), learnings.map(compactLearningRow));
+}
+
 async function upsertItemIndex(root, item) {
   const path = join(root, "index", "items.json");
   const rows = await readJson(path, null);
@@ -288,6 +330,28 @@ async function upsertItemIndex(root, item) {
   await writeJsonAtomic(path, next.sort(sortItems));
 }
 
+async function upsertActionIndex(root, action) {
+  await upsertRecordIndex(root, "actions", compactActionRow(action), rebuildActionIndex);
+}
+
+async function upsertLearningIndex(root, learning) {
+  await upsertRecordIndex(root, "learnings", compactLearningRow(learning), rebuildLearningIndex);
+}
+
+async function upsertRecordIndex(root, collection, nextRow, rebuild) {
+  const path = join(root, "index", `${collection}.json`);
+  const rows = await readJson(path, null);
+  if (!Array.isArray(rows)) {
+    await rebuild(root);
+    return;
+  }
+  const found = rows.findIndex((row) => row.id === nextRow.id);
+  const next = found === -1
+    ? [...rows, nextRow]
+    : rows.map((row, index) => index === found ? nextRow : row);
+  await writeJsonAtomic(path, next.sort(sortRecords));
+}
+
 async function removeItemFromIndex(root, id) {
   const path = join(root, "index", "items.json");
   const rows = await readJson(path, null);
@@ -295,6 +359,13 @@ async function removeItemFromIndex(root, id) {
     await rebuildItemIndex(root);
     return;
   }
+  await writeJsonAtomic(path, rows.filter((row) => row.id !== id));
+}
+
+async function removeRecordFromIndex(root, collection, id) {
+  const path = join(root, "index", `${collection}.json`);
+  const rows = await readJson(path, null);
+  if (!Array.isArray(rows)) return;
   await writeJsonAtomic(path, rows.filter((row) => row.id !== id));
 }
 
@@ -312,6 +383,39 @@ function compactItemRow(item) {
     tags: item.tags || [],
     received_at: item.received_at,
     updated_at: item.updated_at
+  };
+}
+
+function compactActionRow(action) {
+  return {
+    id: action.id,
+    intake_item_id: action.intake_item_id,
+    source_id: action.source_id || null,
+    type: action.type,
+    status: action.status,
+    proposed_by: action.proposed_by || null,
+    approved_by: action.approved_by || null,
+    risk_level: action.risk_level || null,
+    confidence: action.confidence ?? null,
+    created_at: action.created_at,
+    approved_at: action.approved_at || null,
+    executed_at: action.executed_at || null
+  };
+}
+
+function compactLearningRow(learning) {
+  return {
+    id: learning.id,
+    source_id: learning.source_id || null,
+    source_item_ids: learning.source_item_ids || [],
+    type: learning.type,
+    title: learning.title,
+    status: learning.status,
+    confidence: learning.confidence ?? null,
+    exported_to_strata: learning.exported_to_strata || false,
+    exported_to_totalrecall: learning.exported_to_totalrecall || false,
+    created_at: learning.created_at,
+    reviewed_at: learning.reviewed_at || null
   };
 }
 

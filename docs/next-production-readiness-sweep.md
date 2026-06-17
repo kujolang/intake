@@ -50,8 +50,8 @@ This is the next-session work queue after the latest local verification sweep. I
 
 ## P1: Performance Evidence
 
-- Add compact indexes or purpose-built summaries for actions, learnings, and approval audit reads.
-- Add a benchmark threshold gate after action/learning/audit index work lands.
+- Add a benchmark threshold gate for warm dashboard endpoints and repeated no-op sync.
+- Add longer-duration trend checks for audit-log growth and backup/restore timing.
 
 ## P2: Kujo Language Showcase
 

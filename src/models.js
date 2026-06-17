@@ -78,6 +78,7 @@ export function makeAction(input) {
   return {
     id: input.id || newId("act", `${input.intake_item_id}:${input.type}:${now}`),
     intake_item_id: input.intake_item_id,
+    source_id: input.source_id || null,
     type: input.type,
     status: input.status || "proposed",
     proposed_by: input.proposed_by || "intake",
@@ -100,6 +101,7 @@ export function makeLearning(input) {
   return {
     id: input.id || newId("lrn", `${input.type}:${input.title}:${now}`),
     source_item_ids: input.source_item_ids || [],
+    source_id: input.source_id || null,
     type: input.type || "general",
     title: input.title || "Untitled learning",
     summary: input.summary || "",

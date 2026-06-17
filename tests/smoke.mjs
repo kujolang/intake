@@ -36,6 +36,7 @@ try {
   run(["backup", "verify", backupPath]);
   run(["backup", "restore", backupPath, "--target", join(root, "restored-intake")]);
   run(["doctor"]);
+  run(["doctor", "--fix"]);
   run(["eval", "run"]);
   const dash = spawnSync(process.execPath, ["bin/intake.js", "dashboard", "--port", "0", "--token", "smoke-token"], {
     cwd: process.cwd(),

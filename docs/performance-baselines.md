@@ -24,27 +24,27 @@ npm run bench -- --items 100 --logs 100000 --fileRows 0 --actions 0 --learnings 
 
 | Scenario | Timing |
 | --- | ---: |
-| Insert 1,000 items | 4,398 ms |
-| Read item index page of 100 after 1,000-item setup | 586 ms |
-| Insert 1,000 actions | 2,176 ms |
-| Insert 1,000 learnings | 2,562 ms |
-| Write 10,000 audit logs | 5,628 ms |
-| Sync 1,000 file rows | 7,080 ms |
-| Repeated dedupe sync after 1,000 file rows | 124 ms |
-| Warm dashboard summary after 1k/1k/1k setup | 421 ms |
+| Insert 1,000 items | 2,694 ms |
+| Read item index page of 100 after 1,000-item setup | 440 ms |
+| Insert 1,000 actions | 1,443 ms |
+| Insert 1,000 learnings | 1,205 ms |
+| Write 10,000 audit logs | 2,937 ms |
+| Sync 1,000 file rows | 4,318 ms |
+| Repeated dedupe sync after 1,000 file rows | 95 ms |
+| Warm dashboard summary after 1k/1k/1k setup | 15 ms |
 | Warm dashboard items page of 100 after 1k setup | 12 ms |
-| Warm dashboard actions page of 100 after 1k setup | 271 ms |
-| Warm dashboard learnings page of 100 after 1k setup | 308 ms |
-| Warm dashboard approval audit after 1k setup | 404 ms |
-| Insert 10,000 items | 35,378 ms |
-| Read item index page of 100 after 10,000-item setup | 2,927 ms |
-| No-op source sync after 10,000-item setup | 54 ms |
-| Repeated no-op dedupe sync after 10,000-item setup | 62 ms |
-| Warm dashboard summary after 10k items plus 1k actions/learnings | 576 ms |
-| Warm dashboard items page of 100 after 10k setup | 86 ms |
-| Warm dashboard actions page of 100 after 10k setup | 559 ms |
-| Warm dashboard learnings page of 100 after 10k setup | 599 ms |
-| Warm dashboard approval audit after 10k setup | 877 ms |
+| Warm dashboard actions page of 100 after 1k setup | 33 ms |
+| Warm dashboard learnings page of 100 after 1k setup | 52 ms |
+| Warm dashboard approval audit after 1k setup | 122 ms |
+| Insert 10,000 items | 21,192 ms |
+| Read item index page of 100 after 10,000-item setup | 3,113 ms |
+| No-op source sync after 10,000-item setup | 43 ms |
+| Repeated no-op dedupe sync after 10,000-item setup | 44 ms |
+| Warm dashboard summary after 10k items plus 1k actions/learnings | 55 ms |
+| Warm dashboard items page of 100 after 10k setup | 51 ms |
+| Warm dashboard actions page of 100 after 10k setup | 29 ms |
+| Warm dashboard learnings page of 100 after 10k setup | 34 ms |
+| Warm dashboard approval audit after 10k setup | 86 ms |
 | Write 100,000 audit logs | 46,792 ms |
 
 ## Notes
@@ -52,5 +52,5 @@ npm run bench -- --items 100 --logs 100000 --fileRows 0 --actions 0 --learnings 
 - Repeated no-op sync now uses compact item index dedupe keys and skips full index rebuilds when no items are saved.
 - The 10,000-item index read includes first-read index rebuild cost in this benchmark shape because benchmark item insertion intentionally bypasses incremental index updates.
 - File sync timing includes raw payload storage, item normalization, classification, audit logging, and final index rebuild for newly saved items.
-- Warm dashboard item pages are served from the compact item index and stay materially faster than full action/learning reads.
-- Action, learning, and approval-audit dashboard endpoints cross the 500 ms range at 10k items plus 1k related records. Next performance work should add compact indexes or purpose-built summaries for those records.
+- Warm dashboard item, action, learning, summary, and approval-audit reads use compact indexes and now stay below 125 ms in these local baseline runs.
+- The 100,000 audit-log write baseline remains intentionally separate because it measures append-only log throughput rather than dashboard read latency.

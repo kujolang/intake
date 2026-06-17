@@ -31,7 +31,9 @@ import {
   loadSettings,
   loadSources,
   readRaw,
+  rebuildActionIndex,
   rebuildItemIndex,
+  rebuildLearningIndex,
   resolveIntakeDir,
   saveAction,
   saveItem,
@@ -111,6 +113,8 @@ async function cmdDoctor(root, flags) {
   await initStore(root);
   if (flags.fix) {
     await rebuildItemIndex(root);
+    await rebuildActionIndex(root);
+    await rebuildLearningIndex(root);
     await logEvent(root, "audit", { event_type: "doctor_fix", status: "ok" });
   }
   const result = await runDoctor(root);

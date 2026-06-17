@@ -69,6 +69,7 @@ Current status: Intake is ready for local-first live mailbox smoke testing, demo
 - Added compact item index dedupe keys and skipped full index rebuilds on no-op source syncs.
 - Published local performance baselines in [performance-baselines.md](performance-baselines.md).
 - Added warm dashboard API timings and 100k audit-log baseline to the performance evidence.
+- Added compact action and learning indexes so dashboard action, learning, summary, and approval-audit reads stay under 125 ms in local baselines.
 - Added restore drill documentation.
 - Expanded agent-facing docs with stable records, allowed operations, and blocked operations.
 - Added example packs for agencies, SaaS support, solo founders, and internal ops.
@@ -110,8 +111,8 @@ Current status: Intake is ready for local-first live mailbox smoke testing, demo
 
 ## P1: Performance
 
-- Add compact indexes or purpose-built summaries for actions, learnings, and approval audit reads.
-- Add a benchmark threshold gate after action/learning/audit index work lands.
+- Add a benchmark threshold gate for warm dashboard endpoints and repeated no-op sync.
+- Add longer-duration trend checks for audit-log growth and backup/restore timing.
 
 ## P1: Security
 

@@ -6,7 +6,7 @@ import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { testSource } from "./adapters/index.js";
 import { buildSourceFromInput, sanitizeSource, sanitizeSources } from "./source-config.js";
-import { initStore, listActions, listItemIndex, listLearnings, loadAction, loadItem, loadPolicies, loadRules, loadSettings, loadSources, readRaw, saveItem, savePolicies, saveSettings, saveSources, logEvent } from "./storage.js";
+import { initStore, listActionIndex, listActions, listItemIndex, listLearningIndex, listLearnings, loadAction, loadItem, loadPolicies, loadRules, loadSettings, loadSources, readRaw, saveItem, savePolicies, saveSettings, saveSources, logEvent } from "./storage.js";
 import { evaluatePolicy } from "./policy.js";
 import { appendSourceSyncHistory, appendSourceTestHistory } from "./source-history.js";
 import { approveAction, classifyAndSave, createLearning, proposeDraft, rejectAction, runAction, setAutoActions, syncAll } from "./workflow.js";
@@ -147,8 +147,8 @@ async function routeApi(root, method, url, body, session = {}) {
 async function summary(root) {
   const [items, actions, learnings, settings] = await Promise.all([
     listItemIndex(root),
-    listActions(root),
-    listLearnings(root),
+    listActionIndex(root),
+    listLearningIndex(root),
     loadSettings(root)
   ]);
   return {
@@ -212,7 +212,7 @@ async function mutateAction(root, actionId, action) {
 
 async function approvalAudit(root, url) {
   const filters = approvalAuditFilters(url);
-  const actions = await listActions(root);
+  const actions = await listActionIndex(root);
   const items = new Map();
   const rows = [];
   for (const action of actions) {
