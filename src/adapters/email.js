@@ -1,6 +1,7 @@
 import { ImapFlow } from "imapflow";
 import { simpleParser } from "mailparser";
 import nodemailer from "nodemailer";
+import { attachmentMetadata } from "../attachments.js";
 import { makeItem } from "../models.js";
 import { resolveSecretRef } from "../secrets.js";
 import { storeRaw } from "../storage.js";
@@ -120,12 +121,7 @@ async function itemFromMessage(root, source, message) {
     author_email: parsed.from?.value?.[0]?.address || null,
     participants: [...(parsed.to?.value || []), ...(parsed.cc?.value || [])].map((entry) => entry.address || entry.name).filter(Boolean),
     received_at: parsed.date ? parsed.date.toISOString() : new Date().toISOString(),
-    attachments: (parsed.attachments || []).map((attachment) => ({
-      filename: attachment.filename,
-      content_type: attachment.contentType,
-      size: attachment.size,
-      checksum: attachment.checksum
-    })),
+    attachments: [],
     queue: source.default_queue || "inbox",
     metadata: {
       uid: message.uid,
@@ -133,12 +129,14 @@ async function itemFromMessage(root, source, message) {
       email_headers: Object.fromEntries(parsed.headers || [])
     }
   });
+  const attachments = await attachmentMetadata(root, source, temp.id, parsed.attachments || []);
   const rawPath = await storeRaw(root, "email", source.id, temp.id, "eml", message.source.toString("utf8"));
-  return { ...temp, raw_payload_path: rawPath };
+  return { ...temp, attachments, raw_payload_path: rawPath };
 }
 
 async function openImap(source) {
   const client = new ImapFlow(imapConfig(source));
+  client.on("error", () => {});
   await client.connect();
   return client;
 }

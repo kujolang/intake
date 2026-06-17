@@ -1,6 +1,7 @@
 import { readFile, readdir, stat } from "node:fs/promises";
 import { extname, join } from "node:path";
 import { simpleParser } from "mailparser";
+import { attachmentMetadata } from "../attachments.js";
 import { makeItem } from "../models.js";
 import { storeRaw } from "../storage.js";
 import { shortHash } from "../util.js";
@@ -93,17 +94,13 @@ async function itemFromEml(root, source, rawId, nativeId, buffer) {
     author_email: parsed.from?.value?.[0]?.address || null,
     participants: [...(parsed.to?.value || []), ...(parsed.cc?.value || [])].map((entry) => entry.address || entry.name).filter(Boolean),
     received_at: parsed.date ? parsed.date.toISOString() : new Date().toISOString(),
-    attachments: (parsed.attachments || []).map((attachment) => ({
-      filename: attachment.filename,
-      content_type: attachment.contentType,
-      size: attachment.size,
-      checksum: attachment.checksum
-    })),
+    attachments: [],
     queue: source.default_queue || "inbox",
     metadata: { email_headers: Object.fromEntries(parsed.headers || []) }
   });
+  const attachments = await attachmentMetadata(root, source, temp.id, parsed.attachments || []);
   const rawPath = await storeRaw(root, "email", source.id, temp.id, "eml", buffer.toString("utf8"));
-  return { ...temp, raw_payload_path: rawPath };
+  return { ...temp, attachments, raw_payload_path: rawPath };
 }
 
 function firstLine(text) {
