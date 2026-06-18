@@ -115,6 +115,80 @@ test("dashboard updates runtime settings and policies", async () => {
   });
 });
 
+test("dashboard creates and edits actions and rules", async () => {
+  await withDashboard(async (dashboard, item) => {
+    const base = `http://${dashboard.host}:${dashboard.port}`;
+    const headers = { "x-intake-token": "test-token", "content-type": "application/json" };
+
+    const createdAction = await (await fetch(`${base}/api/actions`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        item_id: item.id,
+        type: "comment_issue",
+        risk_level: "medium",
+        body: "Initial operator note"
+      })
+    })).json();
+    assert.equal(createdAction.action.type, "comment_issue");
+    assert.equal(createdAction.action.proposed_by, "dashboard");
+
+    const updatedAction = await (await fetch(`${base}/api/actions/${createdAction.action.id}/update`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        type: "draft_response",
+        risk_level: "low",
+        body: "Edited operator note"
+      })
+    })).json();
+    assert.equal(updatedAction.action.type, "draft_response");
+    assert.equal(updatedAction.action.body, "Edited operator note");
+    assert.equal(updatedAction.action.metadata.edited_by, "dashboard");
+    const fetchedAction = await (await fetch(`${base}/api/actions/${createdAction.action.id}`, { headers })).json();
+    assert.equal(fetchedAction.action.body, "Edited operator note");
+
+    const createdRule = await (await fetch(`${base}/api/rules`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        id: "bug-dashboard-test",
+        description: "Dashboard-created bug rule",
+        match_any: "blank screen, visual bug",
+        tags: "bug-report, ui",
+        category: "bug",
+        intent: "bug_report",
+        queue: "engineering",
+        risk_level: "medium",
+        suggested_actions: "draft_response, check_release_regression"
+      })
+    })).json();
+    assert.equal(createdRule.rule.id, "bug-dashboard-test");
+    assert.deepEqual(createdRule.rule.match_any, ["blank screen", "visual bug"]);
+
+    const updatedRule = await (await fetch(`${base}/api/rules/bug-dashboard-test`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        description: "Updated bug rule",
+        match_any: ["blank screen"],
+        tags: ["bug-report"],
+        queue: "release-regression-watch",
+        risk_level: "high"
+      })
+    })).json();
+    assert.equal(updatedRule.rule.queue, "release-regression-watch");
+    assert.equal(updatedRule.rule.risk_level, "high");
+
+    const badRule = await fetch(`${base}/api/rules`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ id: "bad rule id", match_any: "broken" })
+    });
+    assert.equal(badRule.status, 400);
+  });
+});
+
 test("dashboard previews policy and summarizes approval audit", async () => {
   await withDashboard(async (dashboard, item) => {
     const base = `http://${dashboard.host}:${dashboard.port}`;
@@ -402,5 +476,10 @@ test("dashboard HTML keeps icon controls accessible", async () => {
     assert.match(html, /AI_PROVIDER_PRESETS/);
     assert.match(html, /Custom OpenAI-compatible/);
     assert.match(html, /refreshWithSync/);
+    assert.match(html, /metric-btn/);
+    assert.match(html, /filter-grid/);
+    assert.match(html, /editor-grid/);
+    assert.match(html, /newActionBody/);
+    assert.match(html, /ruleTerms/);
   });
 });

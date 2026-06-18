@@ -7,8 +7,9 @@ import { join } from "node:path";
 import { attachmentInventory, readQuarantinedAttachment } from "./attachments.js";
 import { testSource } from "./adapters/index.js";
 import { AI_PROVIDER_PRESETS } from "./ai.js";
+import { makeAction } from "./models.js";
 import { buildSourceFromInput, sanitizeSource, sanitizeSources } from "./source-config.js";
-import { initStore, listActionIndex, listActions, listItemIndex, listLearningIndex, listLearnings, loadAction, loadItem, loadPolicies, loadRules, loadSettings, loadSources, readRaw, saveItem, savePolicies, saveSettings, saveSources, logEvent } from "./storage.js";
+import { initStore, listActionIndex, listActions, listItemIndex, listLearningIndex, listLearnings, loadAction, loadItem, loadPolicies, loadRules, loadSettings, loadSources, readRaw, saveAction, saveItem, savePolicies, saveRules, saveSettings, saveSources, logEvent } from "./storage.js";
 import { evaluatePolicy } from "./policy.js";
 import { appendSourceSyncHistory, appendSourceTestHistory } from "./source-history.js";
 import { approveAction, classifyAndSave, createLearning, proposeDraft, rejectAction, runAction, setAutoActions, syncAll } from "./workflow.js";
@@ -160,14 +161,17 @@ async function routeApi(root, method, url, body, session = {}) {
     return mutateItem(root, parts[2], parts[3], body);
   }
   if (method === "GET" && parts[1] === "actions" && parts.length === 2) return { actions: await listActions(root, listFiltersFrom(url)) };
+  if (method === "POST" && parts[1] === "actions" && parts.length === 2) return createDashboardAction(root, body);
   if (method === "GET" && parts[1] === "approval-audit") return approvalAudit(root, url);
   if (method === "GET" && parts[1] === "actions" && parts[2]) return { action: await loadAction(root, parts[2]) };
-  if (method === "POST" && parts[1] === "actions" && parts[2]) return mutateAction(root, parts[2], parts[3]);
+  if (method === "POST" && parts[1] === "actions" && parts[2]) return mutateAction(root, parts[2], parts[3], body);
   if (method === "GET" && parts[1] === "sources") return { sources: sanitizeSources(await loadSources(root)) };
   if (method === "POST" && parts[1] === "sources" && parts.length === 2) return addSource(root, body);
   if (method === "POST" && parts[1] === "sources" && parts[2]) return mutateSource(root, parts[2], parts[3], body);
   if (method === "GET" && parts[1] === "learnings") return { learnings: await listLearnings(root, listFiltersFrom(url)) };
   if (method === "GET" && parts[1] === "rules") return { rules: await loadRules(root) };
+  if (method === "POST" && parts[1] === "rules" && parts.length === 2) return upsertDashboardRule(root, null, body);
+  if (method === "POST" && parts[1] === "rules" && parts[2]) return upsertDashboardRule(root, parts[2], body);
   if (method === "GET" && parts[1] === "policies") return { policies: await loadPolicies(root) };
   if (method === "POST" && parts[1] === "policies") return updatePolicies(root, body);
   if (method === "POST" && parts[1] === "policy" && parts[2] === "preview") return policyPreview(root, body);
@@ -242,11 +246,115 @@ async function mutateItem(root, itemId, action, body) {
   throw new Error("unknown item action");
 }
 
-async function mutateAction(root, actionId, action) {
+async function createDashboardAction(root, body) {
+  const itemId = nullableString(body.item_id || body.itemId);
+  const type = nullableString(body.type) || "draft_response";
+  if (!itemId) throw httpError(400, "action requires item_id");
+  if (!type) throw httpError(400, "action requires type");
+  const item = await requireItem(root, itemId);
+  const action = makeAction({
+    intake_item_id: item.id,
+    source_id: item.source_id,
+    type,
+    status: nullableString(body.status) || "proposed",
+    proposed_by: "dashboard",
+    body: nullableString(body.body) || "",
+    risk_level: nullableString(body.risk_level) || item.risk_level || "medium",
+    confidence: item.ai_confidence ?? null,
+    metadata: { summary: item.ai_summary || null }
+  });
+  await saveAction(root, action);
+  await logEvent(root, "actions", {
+    source_id: item.source_id,
+    item_id: item.id,
+    action_id: action.id,
+    event_type: "dashboard_action_created",
+    risk_level: action.risk_level
+  });
+  return { action };
+}
+
+async function mutateAction(root, actionId, action, body = {}) {
   if (action === "approve") return { action: await approveAction(root, actionId, "dashboard") };
   if (action === "reject") return { action: await rejectAction(root, actionId, "dashboard") };
   if (action === "run") return { action: await runAction(root, actionId) };
+  if (action === "update") return updateDashboardAction(root, actionId, body);
   throw new Error("unknown action command");
+}
+
+async function updateDashboardAction(root, actionId, body) {
+  const action = await loadAction(root, actionId);
+  if (!action) throw httpError(404, "no such action");
+  if (action.status === "executed") throw httpError(400, "executed actions cannot be edited");
+  const next = {
+    ...action,
+    type: nullableString(body.type) || action.type,
+    body: body.body === undefined ? action.body : String(body.body || ""),
+    status: nullableString(body.status) || action.status,
+    risk_level: nullableString(body.risk_level) || action.risk_level,
+    metadata: {
+      ...(action.metadata || {}),
+      edited_by: "dashboard",
+      edited_at: isoNow()
+    }
+  };
+  await saveAction(root, next);
+  await logEvent(root, "actions", {
+    source_id: next.source_id,
+    item_id: next.intake_item_id,
+    action_id: next.id,
+    event_type: "dashboard_action_updated",
+    risk_level: next.risk_level
+  });
+  return { action: next };
+}
+
+async function upsertDashboardRule(root, id, body) {
+  const rules = await loadRules(root);
+  const existing = rules.find((rule) => rule.id === id || rule.id === body.id) || null;
+  const rule = normalizeDashboardRule(id || body.id, body, existing);
+  const next = existing
+    ? rules.map((candidate) => candidate.id === existing.id ? rule : candidate)
+    : [...rules, rule];
+  await saveRules(root, next);
+  await logEvent(root, "policy", {
+    event_type: existing ? "dashboard_rule_updated" : "dashboard_rule_created",
+    status: "ok",
+    policy_result: { rule_id: rule.id }
+  });
+  return { rule, rules: next };
+}
+
+function normalizeDashboardRule(id, body, existing = null) {
+  const ruleId = nullableString(id);
+  if (!ruleId || !/^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$/.test(ruleId)) {
+    throw httpError(400, "rule id must use letters, numbers, dots, underscores, colons, or dashes");
+  }
+  const now = isoNow();
+  const risk = ["low", "medium", "high", "critical"].includes(body.risk_level) ? body.risk_level : existing?.risk_level || "low";
+  const terms = parseRuleList(body.match_any ?? body.match_terms ?? body.terms ?? existing?.match_any);
+  if (!terms.length) throw httpError(400, "rule requires at least one match term");
+  return {
+    ...(existing || {}),
+    id: ruleId,
+    version: Number(body.version || existing?.version || 1),
+    description: nullableString(body.description) || existing?.description || "",
+    match_any: terms,
+    tags: parseRuleList(body.tags ?? existing?.tags),
+    category: nullableString(body.category) || null,
+    intent: nullableString(body.intent) || null,
+    queue: nullableString(body.queue) || null,
+    risk_level: risk,
+    suggested_actions: parseRuleList(body.suggested_actions ?? existing?.suggested_actions),
+    blocked_actions: parseRuleList(body.blocked_actions ?? existing?.blocked_actions),
+    status: nullableString(body.status) || existing?.status || "approved",
+    created_at: existing?.created_at || now,
+    updated_at: now
+  };
+}
+
+function parseRuleList(value) {
+  return Array.isArray(value) ? uniq(value.map((entry) => String(entry || "").trim())) : parseCsv(value);
 }
 
 async function approvalAudit(root, url) {
@@ -633,10 +741,12 @@ function dashboardHtml() {
     .kill { color: var(--muted); }
     .kill.on { color: var(--danger); border-color: #e5b3bb; }
     .metrics { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin-bottom: 14px; }
-    .metric { border: 1px solid var(--line); border-radius: 7px; padding: 10px; background: white; min-height: 68px; }
+    .metric { border: 1px solid var(--line); border-radius: 7px; padding: 10px; background: white; min-height: 68px; align-items: flex-start; justify-content: flex-start; text-align: left; }
+    .metric-btn { width: 100%; display: grid; gap: 2px; }
+    .metric-btn.active { border-color: var(--accent); background: #e8f3ef; color: var(--accent); }
     .metric b { display: block; font-size: 22px; margin-bottom: 4px; }
     .metric span, .muted { color: var(--muted); font-size: 13px; }
-    .filters { display: grid; gap: 8px; margin-bottom: 14px; }
+    .filters { display: grid; gap: 8px; margin: 4px 0 14px; padding: 12px 0; border-top: 1px solid rgba(140, 160, 150, .35); border-bottom: 1px solid rgba(140, 160, 150, .35); }
     .queue-list { display: grid; gap: 6px; }
     .queue-btn { display: flex; justify-content: space-between; align-items: center; width: 100%; text-align: left; }
     .queue-btn.active { border-color: var(--accent); color: var(--accent); background: #e8f3ef; }
@@ -666,6 +776,11 @@ function dashboardHtml() {
     .attachment-row b { overflow-wrap: anywhere; }
     .formrow { display: flex; gap: 8px; margin: 8px 0; }
     .formrow > * { flex: 1; }
+    .filter-grid, .editor-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin: 12px 0; }
+    .filter-grid label, .editor-grid label { display: grid; gap: 4px; color: var(--muted); font-size: 12px; }
+    .filter-grid input, .filter-grid select, .editor-grid input, .editor-grid select, .editor-grid textarea { width: 100%; }
+    .editor-grid .wide { grid-column: span 3; }
+    #logSelect { max-width: 340px; min-height: 38px; }
     .work-field { display: grid; gap: 5px; margin: 10px 0; }
     .work-field label { color: var(--muted); font-size: 12px; }
     .work-field .formrow { margin: 0; }
@@ -702,7 +817,7 @@ function dashboardHtml() {
     .diagnostic-row .skip { color: var(--muted); font-weight: 700; }
     @media (max-width: 1120px) { .app { grid-template-columns: 240px 1fr; } .sidepanel { grid-column: 1 / -1; border-left: 0; border-top: 1px solid var(--line); } }
     @media (max-width: 960px) { .setup-steps, .preset-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
-    @media (max-width: 760px) { .app, .split { display: block; } aside, main, .sidepanel { border: 0; border-bottom: 1px solid var(--line); } .list { margin-bottom: 12px; } .source-form, .setup-steps, .preset-grid, .settings-grid { grid-template-columns: 1fr; } .settings-grid label { display: grid; gap: 4px; } .source-form .wide, .diagnostics { grid-column: auto; } .diagnostic-row { grid-template-columns: 1fr; } }
+    @media (max-width: 760px) { .app, .split { display: block; } aside, main, .sidepanel { border: 0; border-bottom: 1px solid var(--line); } .list { margin-bottom: 12px; } .source-form, .setup-steps, .preset-grid, .settings-grid, .filter-grid, .editor-grid { grid-template-columns: 1fr; } .settings-grid label { display: grid; gap: 4px; } .source-form .wide, .diagnostics, .editor-grid .wide { grid-column: auto; } .diagnostic-row { grid-template-columns: 1fr; } }
   </style>
 </head>
 <body>
@@ -758,7 +873,7 @@ function dashboardHtml() {
     const tokenFromUrl = new URL(location.href).searchParams.get("token");
     if (tokenFromUrl) sessionStorage.setItem("intakeToken", tokenFromUrl);
     const token = sessionStorage.getItem("intakeToken") || "";
-    const state = { items: [], sources: [], summary: null, selectedQueue: "", selectedItemId: null, selectedSourceId: "", selectedItem: null, selectedView: "items", sourceDiagnostics: {}, pendingSourceAction: "", policyPreview: null, setupProfile: "email", approvalAuditFilters: { operator: "", action_type: "", source_id: "", status: "", date_from: "", date_to: "" } };
+    const state = { items: [], sources: [], summary: null, selectedQueue: "", sidebarFilter: "", selectedItemId: null, selectedSourceId: "", selectedRuleId: "", selectedItem: null, selectedView: "items", sourceDiagnostics: {}, pendingSourceAction: "", policyPreview: null, setupProfile: "email", approvalAuditFilters: { operator: "", action_type: "", source_id: "", status: "", date_from: "", date_to: "" } };
     const qs = (s) => document.querySelector(s);
     const el = (tag, attrs = {}, children = []) => {
       const node = document.createElement(tag);
@@ -820,29 +935,50 @@ function dashboardHtml() {
     }
     function renderShell() {
       const m = state.summary.counts;
+      const activeItems = state.items.filter((item) => item.status !== "resolved" && item.queue !== "resolved");
+      const reviewItems = activeItems.filter((item) => item.status === "needs_review" || item.queue === "human-review");
+      const highRiskItems = activeItems.filter((item) => ["high", "critical"].includes(item.risk_level));
       qs("#metrics").replaceChildren(
-        metric(m.items, "Items", "inbox"), metric(m.needs_review, "Review", "shield"), metric(m.high_risk, "High risk", "alert-triangle"), metric(m.actions, "Actions", "bolt")
+        metric(activeItems.length, "Items", "inbox", "items"),
+        metric(reviewItems.length, "Review", "shield", "review"),
+        metric(highRiskItems.length, "High risk", "alert-triangle", "high_risk"),
+        metric(m.actions, "Actions", "bolt", "actions")
       );
       const kill = qs("#killSwitch");
       const killLabel = state.summary.settings.auto_actions_enabled ? "Auto-actions on" : "Auto-actions off";
       kill.title = killLabel;
       kill.setAttribute("aria-label", killLabel);
       kill.classList.toggle("on", state.summary.settings.auto_actions_enabled);
-      const queues = Object.entries(state.summary.queues).sort((a, b) => b[1] - a[1]);
+      const queues = Object.entries(state.summary.queues).filter(([q]) => q !== "resolved").sort((a, b) => b[1] - a[1]);
       qs("#queues").replaceChildren(
-        queueButton("", "All queues", state.items.length),
+        queueButton("", "All queues", activeItems.length),
         ...queues.map(([q, n]) => queueButton(q, q, n))
       );
     }
-    function metric(value, label, iconName) { return el("div", { class: "metric" }, [icon(iconName), el("b", { text: value }), el("span", { text: label })]); }
+    function metric(value, label, iconName, mode) {
+      return el("button", { class: "metric metric-btn" + (state.sidebarFilter === mode ? " active" : ""), onclick: () => metricClick(mode) }, [icon(iconName), el("b", { text: value }), el("span", { text: label })]);
+    }
+    function metricClick(mode) {
+      state.selectedView = mode === "actions" ? "actions" : "items";
+      state.sidebarFilter = mode === "items" || mode === "actions" ? "" : mode;
+      state.selectedQueue = "";
+      qs("#searchBox").value = "";
+      qs("#riskFilter").value = "";
+      qs("#statusFilter").value = "";
+      renderCurrent();
+      renderShell();
+    }
     function queueButton(value, label, count) {
-      return el("button", { class: "queue-btn" + (state.selectedQueue === value ? " active" : ""), onclick: () => { state.selectedQueue = value; renderCurrent(); renderShell(); } }, [el("span", { text: label }), el("b", { text: count })]);
+      return el("button", { class: "queue-btn" + (state.selectedQueue === value ? " active" : ""), onclick: () => { state.selectedQueue = value; state.sidebarFilter = ""; renderCurrent(); renderShell(); } }, [el("span", { text: label }), el("b", { text: count })]);
     }
     function filteredItems() {
       const text = qs("#searchBox").value.toLowerCase();
       const risk = qs("#riskFilter").value;
       const status = qs("#statusFilter").value;
       return state.items.filter((item) =>
+        ((state.selectedQueue || status === "resolved") || (item.status !== "resolved" && item.queue !== "resolved")) &&
+        (state.sidebarFilter !== "review" || item.status === "needs_review" || item.queue === "human-review") &&
+        (state.sidebarFilter !== "high_risk" || ["high", "critical"].includes(item.risk_level)) &&
         (!state.selectedQueue || item.queue === state.selectedQueue) &&
         (!risk || item.risk_level === risk) &&
         (!status || item.status === status) &&
@@ -999,6 +1135,11 @@ function dashboardHtml() {
     }
     async function renderActions() {
       const [{ actions }, audit] = await Promise.all([api("/api/actions?limit=100"), api("/api/approval-audit" + approvalAuditQuery())]);
+      const itemOptions = state.items.map((item) => item.id);
+      const newActionItem = select("newActionItem", itemOptions, state.selectedItemId || itemOptions[0] || "");
+      const newActionType = input("newActionType", "draft_response");
+      const newActionRisk = select("newActionRisk", ["low", "medium", "high", "critical"], state.selectedItem?.risk_level || "medium");
+      const newActionBody = el("textarea", { id: "newActionBody", placeholder: "Action body or operator note" });
       const operator = input("auditOperator", state.approvalAuditFilters.operator);
       const actionType = input("auditActionType", state.approvalAuditFilters.action_type);
       const sourceId = input("auditSourceId", state.approvalAuditFilters.source_id);
@@ -1012,7 +1153,7 @@ function dashboardHtml() {
         summaryList("By action type", audit.approvals.by_type),
         summaryList("By source", audit.approvals.by_source),
         summaryList("By status", audit.approvals.by_status),
-        el("div", { class: "grid2" }, [
+        el("div", { class: "filter-grid" }, [
           label("Operator", operator),
           label("Action type", actionType),
           label("Source ID", sourceId),
@@ -1039,19 +1180,55 @@ function dashboardHtml() {
           button("Export CSV", () => exportApprovalAuditCsv(), "", false, "file-text")
         ])
       ]);
+      const createBlock = el("div", { class: "action-row" }, [
+        el("b", { text: "Propose action" }),
+        el("div", { class: "editor-grid" }, [
+          label("Item", newActionItem),
+          label("Type", newActionType),
+          label("Risk", newActionRisk),
+          label("Body", newActionBody, "wide")
+        ]),
+        el("div", { class: "controls" }, [
+          button("Add action", async () => {
+            await api("/api/actions", { method: "POST", body: JSON.stringify({
+              item_id: newActionItem.value,
+              type: newActionType.value,
+              risk_level: newActionRisk.value,
+              body: newActionBody.value
+            }) });
+            setStatus("Action added");
+            await load();
+            state.selectedView = "actions";
+          }, "primary", !newActionItem.value, "plus")
+        ])
+      ]);
       qs("#actionsList").replaceChildren(auditBlock, ...actions.map((action) =>
-        el("div", { class: "action-row" }, [
+        actionRow(action)
+      ), createBlock);
+    }
+    function actionRow(action) {
+      const body = el("textarea", { id: "actionBody-" + action.id });
+      body.value = action.body || "";
+      const type = input("actionType-" + action.id, action.type || "");
+      const risk = select("actionRisk-" + action.id, ["low", "medium", "high", "critical"], action.risk_level || "low");
+      const canEdit = action.status !== "executed";
+      return el("div", { class: "action-row" }, [
           el("b", { text: action.type + " · " + action.status }),
           el("div", { class: "muted", text: action.id + " · " + action.intake_item_id }),
           action.type === "send_response" || action.result?.policy_result?.blocked ? el("div", { class: "muted", text: "Direct send is disabled by policy unless you explicitly change the policy gate." }) : "",
-          el("pre", { text: action.body || JSON.stringify(action.result || {}, null, 2) }),
+          action.result && !action.body ? el("pre", { text: JSON.stringify(action.result || {}, null, 2) }) : "",
+          el("div", { class: "editor-grid" }, [
+            label("Type", type),
+            label("Risk", risk),
+            label("Body", body, "wide")
+          ]),
           el("div", { class: "controls" }, [
+            button("Save", () => actionUpdate(action.id, { type: type.value, risk_level: risk.value, body: body.value }), "", !canEdit, "device-floppy"),
             button("Approve", () => actionPost(action.id, "approve"), "", !["proposed", "needs_review", "blocked"].includes(action.status), "check"),
             button("Reject", () => actionPost(action.id, "reject"), "danger", ["executed", "rejected"].includes(action.status), "x"),
             button("Run", () => actionPost(action.id, "run"), "primary", action.status !== "approved", "player-play")
           ])
-        ])
-      ));
+      ]);
     }
     function approvalAuditQuery(extra = {}) {
       const params = new URLSearchParams();
@@ -1077,6 +1254,12 @@ function dashboardHtml() {
       await api("/api/actions/" + encodeURIComponent(id) + "/" + action, { method: "POST", body: "{}" });
       await load();
       renderActions();
+    }
+    async function actionUpdate(id, payload) {
+      await api("/api/actions/" + encodeURIComponent(id) + "/update", { method: "POST", body: JSON.stringify(payload) });
+      await load();
+      state.selectedView = "actions";
+      setStatus("Action saved");
     }
     function renderSources() {
       const selected = state.sources.find((source) => source.id === state.selectedSourceId) || state.sources[0] || null;
@@ -1280,8 +1463,8 @@ function dashboardHtml() {
       }
       return node;
     }
-    function label(text, control) {
-      return el("label", {}, [el("span", { text }), control]);
+    function label(text, control, cls = "") {
+      return el("label", { class: cls }, [el("span", { text }), control]);
     }
     function sourcePayload(source) {
       const type = qs("#sourceType").value;
@@ -1393,7 +1576,62 @@ function dashboardHtml() {
     }
     async function renderRules() {
       const { rules } = await api("/api/rules");
-      qs("#rulesList").replaceChildren(...rules.map((r) => el("div", { class: "rule-row" }, [el("b", { text: r.id }), el("div", { class: "rowmeta" }, [pill(r.queue || "none"), pill(r.risk_level || "low")]), el("div", { class: "bodytext", text: r.description || "" })])));
+      const selected = rules.find((rule) => rule.id === state.selectedRuleId) || null;
+      qs("#rulesList").replaceChildren(ruleEditor(selected), ...rules.map((r) => el("div", { class: "rule-row" }, [
+        el("b", { text: r.id }),
+        el("div", { class: "rowmeta" }, [pill(r.queue || "none"), pill(r.risk_level || "low"), ...(r.tags || []).map((tag) => pill(tag))]),
+        el("div", { class: "bodytext", text: r.description || "" }),
+        el("div", { class: "controls" }, [button("Edit", () => { state.selectedRuleId = r.id; renderRules(); }, "", false, "edit")])
+      ])));
+    }
+    function ruleEditor(rule) {
+      const id = input("ruleId", rule?.id || "");
+      id.disabled = Boolean(rule);
+      const description = input("ruleDescription", rule?.description || "");
+      const terms = input("ruleTerms", (rule?.match_any || []).join(", "));
+      const tags = input("ruleTags", (rule?.tags || []).join(", "));
+      const category = input("ruleCategory", rule?.category || "");
+      const intent = input("ruleIntent", rule?.intent || "");
+      const queue = input("ruleQueue", rule?.queue || "support");
+      const risk = select("ruleRisk", ["low", "medium", "high", "critical"], rule?.risk_level || "low");
+      const suggested = input("ruleSuggested", (rule?.suggested_actions || []).join(", "));
+      const blocked = input("ruleBlocked", (rule?.blocked_actions || []).join(", "));
+      return el("div", { class: "rule-row" }, [
+        el("b", { text: rule ? "Edit rule" : "Add rule" }),
+        el("div", { class: "editor-grid" }, [
+          label("Rule ID", id),
+          label("Risk", risk),
+          label("Queue", queue),
+          label("Description", description, "wide"),
+          label("Match terms", terms, "wide"),
+          label("Tags", tags),
+          label("Category", category),
+          label("Intent", intent),
+          label("Suggested actions", suggested, "wide"),
+          label("Blocked actions", blocked, "wide")
+        ]),
+        el("div", { class: "controls" }, [
+          button(rule ? "Save rule" : "Add rule", async () => {
+            await api("/api/rules" + (rule ? "/" + encodeURIComponent(rule.id) : ""), { method: "POST", body: JSON.stringify({
+              id: id.value,
+              description: description.value,
+              match_any: terms.value,
+              tags: tags.value,
+              category: category.value,
+              intent: intent.value,
+              queue: queue.value,
+              risk_level: risk.value,
+              suggested_actions: suggested.value,
+              blocked_actions: blocked.value
+            }) });
+            setStatus(rule ? "Rule saved" : "Rule added");
+            state.selectedRuleId = id.value;
+            await load();
+            state.selectedView = "rules";
+          }, "primary", false, rule ? "device-floppy" : "plus"),
+          button("New rule", () => { state.selectedRuleId = ""; renderRules(); }, "", false, "plus")
+        ])
+      ]);
     }
     async function renderLogs() {
       const name = qs("#logSelect").value;
@@ -1561,9 +1799,9 @@ function dashboardHtml() {
     document.querySelectorAll(".tab").forEach((tab) => tab.addEventListener("click", () => { state.selectedView = tab.dataset.view; renderCurrent(); }));
     qs("#refreshBtn").addEventListener("click", () => refreshWithSync().catch((error) => setStatus(error.message)));
     qs("#killSwitch").addEventListener("click", async () => { await api("/api/settings/auto-actions", { method: "POST", body: JSON.stringify({ enabled: !state.summary.settings.auto_actions_enabled }) }); await load(); });
-    qs("#searchBox").addEventListener("input", renderItems);
-    qs("#riskFilter").addEventListener("change", renderItems);
-    qs("#statusFilter").addEventListener("change", renderItems);
+    qs("#searchBox").addEventListener("input", () => { state.sidebarFilter = ""; renderShell(); renderItems(); });
+    qs("#riskFilter").addEventListener("change", () => { state.sidebarFilter = ""; renderShell(); renderItems(); });
+    qs("#statusFilter").addEventListener("change", () => { state.sidebarFilter = ""; renderShell(); renderItems(); });
     qs("#logSelect").addEventListener("change", renderLogs);
     decorateStaticIcons();
     load().catch((error) => setStatus(error.message));
