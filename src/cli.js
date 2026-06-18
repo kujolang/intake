@@ -15,6 +15,7 @@ import { makeAction, makeSource } from "./models.js";
 import { evaluatePolicy } from "./policy.js";
 import { purgeItems, applyRetention } from "./retention.js";
 import { explainRules, proposeRuleFromItem } from "./rules.js";
+import { runShipcheck } from "./shipcheck.js";
 import { printJson, printTable } from "./render.js";
 import { buildSourceFromInput, sanitizeSources } from "./source-config.js";
 import { appendSourceTestHistory } from "./source-history.js";
@@ -595,9 +596,7 @@ async function cmdEval(flags) {
 
 async function cmdShipcheck(root) {
   await initStore(root);
-  const doctor = await runDoctor(root);
-  const evals = await runEvals();
-  const report = { ok: doctor.ok && evals.ok, doctor, evals };
+  const report = await runShipcheck(root);
   printJson(report);
   if (!report.ok) process.exitCode = 1;
 }

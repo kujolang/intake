@@ -42,7 +42,7 @@
     "verify": "npm run lint && npm test && npm run smoke && node bin/intake.js eval run && npm run bench:gate && npm audit --audit-level=high",
     "bench": "node scripts/bench.mjs",
     "bench:gate": "node scripts/bench-threshold.mjs",
-    "release:check": "npm run verify && node bin/intake.js doctor --json && npm pack --dry-run",
+    "release:check": "npm run verify && node bin/intake.js shipcheck && node bin/intake.js doctor --json && npm pack --dry-run",
     "intake": "node bin/intake.js"
   },
   "dependencies": {

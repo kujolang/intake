@@ -21,6 +21,7 @@ Current decision: keep Kujo Intake private while it is being hardened as a showc
 
 - `npm run verify` passes.
 - `npm run release:check` passes.
+- `intake shipcheck` has no local failures and external blockers are satisfied with evidence.
 - Release checklist passes.
 - `CHANGELOG.md` has a current entry.
 - `README.md` reflects the actual release state.

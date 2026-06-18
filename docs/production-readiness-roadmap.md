@@ -74,6 +74,7 @@ Current status: Intake is ready for local-first live mailbox smoke testing, demo
 - Added dashboard attachment inventory and audited quarantined-attachment downloads with path and size guards.
 - Added `npm run release:check` for verify, doctor, and package dry-run release validation.
 - Added dashboard security posture API/UI, constant-time dashboard token checks, and stricter non-local token requirements.
+- Expanded `intake shipcheck` into a structured release-readiness report covering package metadata, root files, release scripts, CI wiring, doctor, evals, and external blockers.
 - Added restore drill documentation.
 - Expanded agent-facing docs with stable records, allowed operations, and blocked operations.
 - Added example packs for agencies, SaaS support, solo founders, and internal ops.

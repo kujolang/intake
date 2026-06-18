@@ -6,6 +6,7 @@ Use this checklist before publishing or presenting Kujo Intake as a release cand
 
 - Run `npm run verify`.
 - Run `npm run release:check`.
+- Run `intake shipcheck` if you need a standalone JSON release-readiness report.
 - Confirm unit, smoke, eval, and audit gates pass.
 - Confirm the benchmark gate inside `npm run verify` reports `ok: true`.
 - Confirm doctor passes against a clean demo store.
@@ -51,6 +52,7 @@ Use this checklist before publishing or presenting Kujo Intake as a release cand
 ## Packaging Gate
 
 - Confirm package name, description, keywords, license, repository, and bin entry.
+- Run `intake shipcheck` and review all warnings/blockers.
 - Run `npm pack --dry-run`.
 - Confirm package contents include only the intended release files from `package.json#files`.
 - Confirm whether `"private": true` should remain.

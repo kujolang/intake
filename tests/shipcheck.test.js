@@ -1,0 +1,40 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { initStore } from "../src/storage.js";
+import { runShipcheck } from "../src/shipcheck.js";
+
+test("shipcheck reports local release health and external enterprise blockers", async () => {
+  const root = await mkdtemp(join(tmpdir(), "intake-shipcheck-test-"));
+  try {
+    await initStore(root);
+    const report = await runShipcheck(root);
+    assert.equal(report.ok, true);
+    assert.equal(report.enterprise_ready, false);
+    assert.ok(report.checks.some((check) => check.id === "release-scripts" && check.status === "ok"));
+    assert.ok(report.checks.some((check) => check.id === "ci-workflow" && check.status === "ok"));
+    assert.ok(report.checks.some((check) => check.id === "package-private" && check.status === "warn"));
+    assert.ok(report.blockers.some((blocker) => /Live PrivateEmail/.test(blocker)));
+    assert.ok(report.blockers.some((blocker) => /Remote GitHub Actions/.test(blocker)));
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("shipcheck fails local release health when package metadata is missing", async () => {
+  const root = await mkdtemp(join(tmpdir(), "intake-shipcheck-missing-test-"));
+  const projectRoot = await mkdtemp(join(tmpdir(), "intake-empty-project-"));
+  try {
+    await initStore(root);
+    const report = await runShipcheck(root, { projectRoot });
+    assert.equal(report.ok, false);
+    assert.ok(report.checks.some((check) => check.id === "package-metadata" && check.status === "fail"));
+    assert.ok(report.checks.some((check) => check.id === "ci-workflow" && check.status === "fail"));
+    assert.ok(report.checks.some((check) => check.id === "root-files" && check.status === "fail"));
+  } finally {
+    await rm(root, { recursive: true, force: true });
+    await rm(projectRoot, { recursive: true, force: true });
+  }
+});

@@ -92,6 +92,7 @@ intake onboarding privateemail
 intake source clone support-email support-email-copy
 intake config export --output intake-config.json
 intake doctor
+intake shipcheck
 intake dashboard
 intake eval run
 ```
@@ -398,11 +399,12 @@ Run the local quality gate:
 ```sh
 npm run verify
 npm run release:check
+node bin/intake.js shipcheck
 npm run bench -- --items 1000 --logs 10000 --fileRows 1000 --actions 1000 --learnings 1000
 npm run bench -- --items 100 --logs 100000 --fileRows 0 --actions 0 --learnings 0 --dashboard false
 ```
 
-The built-in test and eval suite covers routing and safety cases from the original build prompt, including refunds, legal threats, prompt injection, Slack-style bug reports, webhook payloads, generated high-volume sync dedupe, learning generation, dashboard policy previews, and auto-action policy checks. `npm run verify` also runs the benchmark gate so warm dashboard and repeated-sync latency regressions fail locally before release. `npm run release:check` adds doctor and package dry-run checks on top of verify.
+The built-in test and eval suite covers routing and safety cases from the original build prompt, including refunds, legal threats, prompt injection, Slack-style bug reports, webhook payloads, generated high-volume sync dedupe, learning generation, dashboard policy previews, and auto-action policy checks. `npm run verify` also runs the benchmark gate so warm dashboard and repeated-sync latency regressions fail locally before release. `npm run release:check` adds shipcheck, doctor, and package dry-run checks on top of verify. `intake shipcheck` reports local release health plus external enterprise blockers such as live-source and remote-CI evidence.
 
 ## Project Structure
 

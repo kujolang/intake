@@ -6,6 +6,7 @@ Use this checklist to decide whether a specific Intake deployment is enterprise-
 
 - `npm run verify` passes on the release artifact, including tests, smoke, evals, benchmark gate, and audit.
 - `npm run release:check` passes before any release tag or package publish.
+- `intake shipcheck` reports no local failures and its external blockers have corresponding evidence.
 - `intake doctor` passes for the target `.intake/` store.
 - Every enabled source passes `intake source test SOURCE_ID`.
 - Backups are created, verified, restored in a drill, and stored outside the app host.
