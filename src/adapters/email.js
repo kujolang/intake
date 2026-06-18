@@ -64,7 +64,7 @@ export async function syncEmailSource(root, source) {
     }
   } finally {
     lock.release();
-    await client.logout();
+    await client.logout().catch(() => {});
   }
   return { items, cursor: { uid: maxUid, synced_at: new Date().toISOString() } };
 }
@@ -147,7 +147,7 @@ async function checkImap(source) {
     client = await openImap(source);
     return { ok: true, host: imapHost(source), port: imapPort(source) };
   } catch (error) {
-    return { ok: false, host: imapHost(source), port: imapPort(source), error: error.message };
+    return { ok: false, host: imapHost(source), port: imapPort(source), error: providerErrorMessage(error, source) };
   } finally {
     if (client) await client.logout().catch(() => {});
   }
@@ -160,7 +160,7 @@ async function checkSmtp(source) {
     await transporter.verify();
     return { ok: true, host: smtpHost(source), port: smtpPort(source) };
   } catch (error) {
-    return { ok: false, host: smtpHost(source), port: smtpPort(source), error: error.message };
+    return { ok: false, host: smtpHost(source), port: smtpPort(source), error: providerErrorMessage(error, source) };
   } finally {
     if (transporter) transporter.close();
   }
@@ -229,9 +229,28 @@ function smtpSecure(source) {
 }
 
 function testTimeoutMs(source) {
-  return Number(source.config?.test_timeout_ms || DEFAULT_TEST_TIMEOUT_MS);
+  const value = Number(source.config?.test_timeout_ms || DEFAULT_TEST_TIMEOUT_MS);
+  return Number.isFinite(value) && value > 0 ? value : DEFAULT_TEST_TIMEOUT_MS;
 }
 
 function headerValue(value) {
   return String(value || "").replace(/[\r\n]+/g, " ").trim();
+}
+
+function providerErrorMessage(error, source) {
+  const parts = [
+    error?.response,
+    error?.message,
+    error?.code,
+    error?.serverResponseCode
+  ].filter(Boolean);
+  const message = parts.length ? parts.join(" | ") : "connection failed";
+  return redactProviderError(message, source);
+}
+
+function redactProviderError(message, source) {
+  let out = String(message || "");
+  const username = source.config?.username;
+  if (username) out = out.split(username).join("[EMAIL]");
+  return out;
 }

@@ -682,7 +682,7 @@ function printSourceTest(result) {
     const detail = check.error || (check.errors || []).join("; ") || [check.host, check.port].filter(Boolean).join(":") || "";
     console.log(`${status.padEnd(4)} ${name}${detail ? ` - ${detail}` : ""}`);
   }
-  for (const error of result.errors || []) console.log(`HELP ${sourceTestHelp(error)}`);
+  for (const help of new Set((result.errors || []).map(sourceTestHelp))) console.log(`HELP ${help}`);
   if (!result.ok) process.exitCode = 1;
 }
 
@@ -690,7 +690,7 @@ function sourceTestHelp(error) {
   const text = String(error || "");
   if (/missing secret env var/i.test(text)) return "Set the named env var in your shell, .env, or .intake/.env, then restart the dashboard/CLI.";
   if (/missing email username/i.test(text)) return "Set the source username to the full mailbox address.";
-  if (/authentication|auth/i.test(text)) return "Verify the mailbox password and provider auth settings.";
+  if (/authentication|auth/i.test(text)) return "Verify the mailbox password and provider auth settings. For PrivateEmail, use the mailbox password that logs into webmail, not the hosting account password.";
   if (/timeout|connect/i.test(text)) return "Check host, port, firewall, VPN, and provider status.";
   if (/insecure/i.test(text)) return "Use secure IMAP/SMTP settings such as SSL ports 993 and 465.";
   return text;
