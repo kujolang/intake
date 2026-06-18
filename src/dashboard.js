@@ -197,13 +197,19 @@ async function summary(root) {
     listLearningIndex(root),
     loadSettings(root)
   ]);
+  const activeItems = items.filter((item) => item.status !== "resolved" && item.queue !== "resolved");
+  const archivedItems = items.filter((item) => item.status === "resolved" || item.queue === "resolved");
   return {
     counts: {
       items: items.length,
+      active_items: activeItems.length,
+      archived_items: archivedItems.length,
       actions: actions.length,
       learnings: learnings.length,
       needs_review: items.filter((item) => item.status === "needs_review" || item.queue === "human-review").length,
-      high_risk: items.filter((item) => ["high", "critical"].includes(item.risk_level)).length
+      active_needs_review: activeItems.filter((item) => item.status === "needs_review" || item.queue === "human-review").length,
+      high_risk: items.filter((item) => ["high", "critical"].includes(item.risk_level)).length,
+      active_high_risk: activeItems.filter((item) => ["high", "critical"].includes(item.risk_level)).length
     },
     queues: countBy(items, "queue"),
     risks: countBy(items, "risk_level"),
@@ -787,8 +793,10 @@ function dashboardHtml() {
     .tab.active { background: var(--ink); color: white; border-color: var(--ink); }
     .split { display: grid; grid-template-columns: minmax(280px, 38%) minmax(320px, 1fr); gap: 12px; min-height: 70vh; }
     .list { border: 1px solid var(--line); border-radius: 8px; overflow: hidden; background: white; }
-    .bulkbar { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 10px; border-bottom: 1px solid var(--line); background: #f8fbfa; }
-    .bulkbar .controls { margin: 0; }
+    .bulkbar { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 10px; border-bottom: 1px solid var(--line); background: #f8fbfa; overflow-x: auto; }
+    .bulkbar .controls { margin: 0; flex-wrap: nowrap; }
+    .bulkbar button { white-space: nowrap; flex: 0 0 auto; }
+    .list-footer { display: grid; gap: 6px; place-items: center; padding: 12px; background: #fbfdfc; }
     .item-row-wrap { display: grid; grid-template-columns: 34px minmax(0, 1fr); align-items: stretch; border-bottom: 1px solid var(--line); background: white; }
     .item-row-wrap.active, .item-row-wrap.active .item-row { background: #e9f2ef; }
     .item-check { display: grid; place-items: start center; padding-top: 13px; }
@@ -909,7 +917,7 @@ function dashboardHtml() {
     const tokenFromUrl = new URL(location.href).searchParams.get("token");
     if (tokenFromUrl) sessionStorage.setItem("intakeToken", tokenFromUrl);
     const token = sessionStorage.getItem("intakeToken") || "";
-    const state = { items: [], sources: [], summary: null, selectedQueue: "", sidebarFilter: "", selectedItemIds: new Set(), selectedItemId: null, selectedSourceId: "", selectedRuleId: "", selectedItem: null, selectedView: "items", sourceDiagnostics: {}, pendingSourceAction: "", policyPreview: null, setupProfile: "email", approvalAuditFilters: { operator: "", action_type: "", source_id: "", status: "", date_from: "", date_to: "" } };
+    const state = { items: [], itemOffset: 0, itemPageSize: 20, itemsHasMore: false, itemsLoading: false, sources: [], summary: null, selectedQueue: "", sidebarFilter: "", selectedItemIds: new Set(), selectedItemId: null, selectedSourceId: "", selectedRuleId: "", selectedItem: null, selectedView: "items", sourceDiagnostics: {}, pendingSourceAction: "", policyPreview: null, setupProfile: "email", approvalAuditFilters: { operator: "", action_type: "", source_id: "", status: "", date_from: "", date_to: "" } };
     const qs = (s) => document.querySelector(s);
     const el = (tag, attrs = {}, children = []) => {
       const node = document.createElement(tag);
@@ -941,14 +949,51 @@ function dashboardHtml() {
     function setStatus(text) { qs("#status").textContent = text || ""; }
     async function load() {
       if (!token) { setStatus("Missing token"); return; }
-      const [summary, items, sources] = await Promise.all([api("/api/summary"), api("/api/items"), api("/api/sources")]);
+      const [summary, sources] = await Promise.all([api("/api/summary"), api("/api/sources")]);
       state.summary = summary;
-      state.items = items.items;
       state.sources = sources.sources;
-      const knownIds = new Set(state.items.map((item) => item.id));
-      state.selectedItemIds = new Set([...state.selectedItemIds].filter((id) => knownIds.has(id)));
+      await resetItems();
       renderShell();
       renderCurrent();
+    }
+    async function resetItems() {
+      state.items = [];
+      state.itemOffset = 0;
+      state.itemsHasMore = false;
+      await loadMoreItems({ render: false });
+    }
+    function itemQuery(offset = state.itemOffset) {
+      const params = new URLSearchParams({ limit: String(state.itemPageSize), offset: String(offset) });
+      const risk = qs("#riskFilter").value;
+      const status = qs("#statusFilter").value;
+      if (state.selectedQueue) params.set("queue", state.selectedQueue);
+      if (risk) params.set("risk", risk);
+      if (status) params.set("status", status);
+      return params.toString();
+    }
+    async function loadMoreItems(options = {}) {
+      if (state.itemsLoading) return;
+      state.itemsLoading = true;
+      const previousVisibleCount = filteredItems().length;
+      try {
+        const { items } = await api("/api/items?" + itemQuery());
+        const seen = new Set(state.items.map((item) => item.id));
+        state.items.push(...items.filter((item) => !seen.has(item.id)));
+        state.itemOffset += items.length;
+        state.itemsHasMore = items.length === state.itemPageSize;
+        const knownIds = new Set(state.items.map((item) => item.id));
+        state.selectedItemIds = new Set([...state.selectedItemIds].filter((id) => knownIds.has(id)));
+      } finally {
+        state.itemsLoading = false;
+      }
+      if (options.render !== false) {
+        renderShell();
+        renderItems();
+        if (options.scroll) {
+          const rows = document.querySelectorAll(".item-row-wrap");
+          rows[Math.min(previousVisibleCount, rows.length - 1)]?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+        }
+      }
     }
     async function refreshWithSync() {
       if (!token) { setStatus("Missing token"); return; }
@@ -973,13 +1018,11 @@ function dashboardHtml() {
     }
     function renderShell() {
       const m = state.summary.counts;
-      const activeItems = state.items.filter((item) => item.status !== "resolved" && item.queue !== "resolved");
-      const reviewItems = activeItems.filter((item) => item.status === "needs_review" || item.queue === "human-review");
-      const highRiskItems = activeItems.filter((item) => ["high", "critical"].includes(item.risk_level));
+      const archivedCount = m.archived_items || state.summary.queues.resolved || state.summary.statuses.resolved || 0;
       qs("#metrics").replaceChildren(
-        metric(activeItems.length, "Items", "inbox", "items"),
-        metric(reviewItems.length, "Review", "shield", "review"),
-        metric(highRiskItems.length, "High risk", "alert-triangle", "high_risk"),
+        metric(m.active_items ?? m.items, "Items", "inbox", "items"),
+        metric(m.active_needs_review ?? m.needs_review, "Review", "shield", "review"),
+        metric(m.active_high_risk ?? m.high_risk, "High risk", "alert-triangle", "high_risk"),
         metric(m.actions, "Actions", "bolt", "actions")
       );
       const kill = qs("#killSwitch");
@@ -989,8 +1032,9 @@ function dashboardHtml() {
       kill.classList.toggle("on", state.summary.settings.auto_actions_enabled);
       const queues = Object.entries(state.summary.queues).filter(([q]) => q !== "resolved").sort((a, b) => b[1] - a[1]);
       qs("#queues").replaceChildren(
-        queueButton("", "All queues", activeItems.length),
-        ...queues.map(([q, n]) => queueButton(q, q, n))
+        queueButton("", "All queues", m.active_items ?? m.items),
+        ...queues.map(([q, n]) => queueButton(q, q, n)),
+        queueButton("resolved", "Archived", archivedCount)
       );
     }
     function metric(value, label, iconName, mode) {
@@ -1003,11 +1047,10 @@ function dashboardHtml() {
       qs("#searchBox").value = "";
       qs("#riskFilter").value = "";
       qs("#statusFilter").value = "";
-      renderCurrent();
-      renderShell();
+      resetItems().then(() => { renderCurrent(); renderShell(); }).catch((error) => setStatus(error.message));
     }
     function queueButton(value, label, count) {
-      return el("button", { class: "queue-btn" + (state.selectedQueue === value ? " active" : ""), onclick: () => { state.selectedQueue = value; state.sidebarFilter = ""; renderCurrent(); renderShell(); } }, [el("span", { text: label }), el("b", { text: count })]);
+      return el("button", { class: "queue-btn" + (state.selectedQueue === value ? " active" : ""), onclick: () => { state.selectedQueue = value; state.sidebarFilter = ""; resetItems().then(() => { renderCurrent(); renderShell(); }).catch((error) => setStatus(error.message)); } }, [el("span", { text: label }), el("b", { text: count })]);
     }
     function filteredItems() {
       const text = qs("#searchBox").value.toLowerCase();
@@ -1037,11 +1080,11 @@ function dashboardHtml() {
     function renderItems() {
       const rows = filteredItems();
       if (rows.length === 0) {
-        qs("#itemList").replaceChildren(el("div", { class: "empty-state" }, [
+        qs("#itemList").replaceChildren(bulkBar(rows), el("div", { class: "empty-state" }, [
           el("b", { text: "No intake items" }),
-          el("div", { class: "muted", text: state.sources.length ? "Sync a source or create a manual item." : "Add an email, file, webhook, or manual source." }),
-          el("div", { class: "controls" }, [button("Sources", () => { state.selectedView = "sources"; renderCurrent(); }, "", false, "plug-connected")])
-        ]));
+          el("div", { class: "muted", text: state.itemsHasMore ? "No loaded items match this view yet. Load more to continue scanning." : (state.sources.length ? "Sync a source or create a manual item." : "Add an email, file, webhook, or manual source.") }),
+          el("div", { class: "controls" }, state.itemsHasMore ? [button("View more", () => loadMoreItems({ render: true, scroll: true }), "primary", state.itemsLoading, "list")] : [button("Sources", () => { state.selectedView = "sources"; renderCurrent(); }, "", false, "plug-connected")])
+        ]), listFooter(rows));
         qs("#itemDetail").replaceChildren(el("div", { class: "empty-state" }, [
           el("b", { text: "Nothing selected" }),
           el("div", { class: "muted", text: "Items will appear here after a source sync or manual intake." })
@@ -1049,7 +1092,7 @@ function dashboardHtml() {
         qs("#workSurface").replaceChildren();
         return;
       }
-      qs("#itemList").replaceChildren(bulkBar(rows), ...rows.map((item) => itemRow(item)));
+      qs("#itemList").replaceChildren(bulkBar(rows), ...rows.map((item) => itemRow(item)), listFooter(rows));
       if (!state.selectedItemId && rows[0]) selectItem(rows[0].id);
     }
     function bulkBar(rows) {
@@ -1059,11 +1102,19 @@ function dashboardHtml() {
       return el("div", { class: "bulkbar" }, [
         el("div", { class: "muted", text: selectedTotal + " selected" + (selectedVisible !== selectedTotal ? " · " + selectedVisible + " visible" : "") }),
         el("div", { class: "controls" }, [
-          button("Select all", () => { for (const id of visibleIds) state.selectedItemIds.add(id); renderItems(); }, "", rows.length === 0, "list"),
-          button("Select 10", () => { for (const id of visibleIds.slice(0, 10)) state.selectedItemIds.add(id); renderItems(); }, "", rows.length === 0, "list"),
+          button("All", () => { for (const id of visibleIds) state.selectedItemIds.add(id); renderItems(); }, "", rows.length === 0, "list", [], "Select all loaded"),
+          button("10", () => { for (const id of visibleIds.slice(0, 10)) state.selectedItemIds.add(id); renderItems(); }, "", rows.length === 0, "list", [], "Select first 10 loaded"),
           button("Clear", () => { state.selectedItemIds.clear(); renderItems(); }, "", selectedTotal === 0, "x"),
-          button("Resolve selected", () => bulkResolveSelected(), "primary", selectedTotal === 0, "check")
+          button("Resolve", () => bulkResolveSelected(), "primary", selectedTotal === 0, "check", [], "Resolve selected")
         ])
+      ]);
+    }
+    function listFooter(rows) {
+      const visible = rows.length;
+      const loaded = state.items.length;
+      return el("div", { class: "list-footer" }, [
+        el("div", { class: "muted", text: visible + " visible · " + loaded + " loaded" + (state.itemsHasMore ? "" : " · end") }),
+        state.itemsHasMore ? button(state.itemsLoading ? "Loading..." : "View more", () => loadMoreItems({ render: true, scroll: true }), "", state.itemsLoading, "list") : ""
       ]);
     }
     function itemRow(item) {
@@ -1854,8 +1905,9 @@ function dashboardHtml() {
       if (name && ICONS[name]) wrap.innerHTML = ICONS[name];
       return wrap;
     }
-    function button(text, onclick, cls = "", disabled = false, iconName = "", children = []) {
+    function button(text, onclick, cls = "", disabled = false, iconName = "", children = [], title = "") {
       const attrs = { class: cls, text, onclick };
+      if (title) attrs.title = title;
       if (disabled) attrs.disabled = "disabled";
       const btn = el("button", attrs);
       if (iconName && ICONS[iconName]) btn.insertAdjacentHTML("afterbegin", ICONS[iconName]);
@@ -1873,8 +1925,8 @@ function dashboardHtml() {
     qs("#refreshBtn").addEventListener("click", () => refreshWithSync().catch((error) => setStatus(error.message)));
     qs("#killSwitch").addEventListener("click", async () => { await api("/api/settings/auto-actions", { method: "POST", body: JSON.stringify({ enabled: !state.summary.settings.auto_actions_enabled }) }); await load(); });
     qs("#searchBox").addEventListener("input", () => { state.sidebarFilter = ""; renderShell(); renderItems(); });
-    qs("#riskFilter").addEventListener("change", () => { state.sidebarFilter = ""; renderShell(); renderItems(); });
-    qs("#statusFilter").addEventListener("change", () => { state.sidebarFilter = ""; renderShell(); renderItems(); });
+    qs("#riskFilter").addEventListener("change", () => { state.sidebarFilter = ""; resetItems().then(() => { renderShell(); renderItems(); }).catch((error) => setStatus(error.message)); });
+    qs("#statusFilter").addEventListener("change", () => { state.sidebarFilter = ""; resetItems().then(() => { renderShell(); renderItems(); }).catch((error) => setStatus(error.message)); });
     qs("#logSelect").addEventListener("change", renderLogs);
     decorateStaticIcons();
     load().catch((error) => setStatus(error.message));

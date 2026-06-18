@@ -228,6 +228,36 @@ test("dashboard bulk resolves selected items", async () => {
       body: JSON.stringify({ action: "block", ids: [items[2].id] })
     });
     assert.equal(bad.status, 400);
+
+    const summary = await (await fetch(`${base}/api/summary`, { headers })).json();
+    assert.equal(summary.counts.archived_items, 2);
+    assert.equal(summary.counts.active_items, 1);
+  } finally {
+    if (dashboard) await new Promise((resolve) => dashboard.server.close(resolve));
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("dashboard items API supports paged list reads", async () => {
+  const root = await mkdtemp(join(tmpdir(), "intake-dashboard-page-test-"));
+  let dashboard;
+  try {
+    await initStore(root);
+    const source = makeSource("manual", { id: "manual", name: "Manual" });
+    await saveSources(root, [source]);
+    for (let index = 0; index < 25; index += 1) {
+      const item = await createManualItem(root, source, { title: `Paged item ${index}`, body: "Pagination dashboard test" });
+      await saveItem(root, item);
+    }
+    dashboard = await startDashboard(root, { port: 0, token: "test-token" });
+    const base = `http://${dashboard.host}:${dashboard.port}`;
+    const headers = { "x-intake-token": "test-token", "content-type": "application/json" };
+
+    const first = await (await fetch(`${base}/api/items?limit=20&offset=0`, { headers })).json();
+    const second = await (await fetch(`${base}/api/items?limit=20&offset=20`, { headers })).json();
+    assert.equal(first.items.length, 20);
+    assert.equal(second.items.length, 5);
+    assert.notEqual(first.items[0].id, second.items[0].id);
   } finally {
     if (dashboard) await new Promise((resolve) => dashboard.server.close(resolve));
     await rm(root, { recursive: true, force: true });
@@ -529,5 +559,7 @@ test("dashboard HTML keeps icon controls accessible", async () => {
     assert.match(html, /bulkbar/);
     assert.match(html, /selectedItemIds/);
     assert.match(html, /Resolve selected/);
+    assert.match(html, /View more/);
+    assert.match(html, /Archived/);
   });
 });
