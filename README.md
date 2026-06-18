@@ -67,6 +67,8 @@ Without `npm link`, run commands through Node:
 node bin/intake.js init
 ```
 
+New developers should start with [docs/developer-onboarding-howto.md](docs/developer-onboarding-howto.md) for local setup, architecture, source adapters, dashboard workflow, testing gates, and PR expectations.
+
 ## Common Commands
 
 ```sh
