@@ -49,7 +49,10 @@ export async function purgeItems(root, filters = {}) {
   const learningIds = learnings
     .filter((learning) => (learning.source_item_ids || []).some((id) => itemIds.has(id)))
     .map((learning) => learning.id);
-  const rawPaths = matched.map((item) => item.raw_payload_path).filter(Boolean);
+  const rawPaths = [...new Set(matched.flatMap((item) => [
+    item.raw_payload_path,
+    ...(item.attachments || []).map((attachment) => attachment.quarantine_path)
+  ]).filter(Boolean))];
 
   if (!dryRun) {
     for (const actionId of actionIds) await deleteAction(root, actionId);
@@ -85,15 +88,28 @@ async function matchingItems(root, filters) {
   if (!filters.source && !filters.status && !filters.queue && !filters.before && !filters.item) {
     throw new Error("purge requires at least one selector: --item, --source, --status, --queue, or --before");
   }
+  const beforeMs = parseOptionalDate(filters.before, "--before");
   const items = await listItems(root);
   return items.filter((item) => {
     if (filters.item && item.id !== filters.item) return false;
     if (filters.source && item.source_id !== filters.source) return false;
     if (filters.status && item.status !== filters.status) return false;
     if (filters.queue && item.queue !== filters.queue) return false;
-    if (filters.before && new Date(item.received_at || item.created_at).getTime() >= new Date(filters.before).getTime()) return false;
+    if (beforeMs !== null && itemTimestamp(item) >= beforeMs) return false;
     return true;
   });
+}
+
+function parseOptionalDate(value, label) {
+  if (value === undefined || value === null || value === "") return null;
+  const time = new Date(value).getTime();
+  if (!Number.isFinite(time)) throw new Error(`${label} must be a valid date`);
+  return time;
+}
+
+function itemTimestamp(item) {
+  const time = new Date(item.received_at || item.created_at).getTime();
+  return Number.isFinite(time) ? time : Date.now();
 }
 
 async function pruneRaw(root, days, options) {

@@ -257,9 +257,9 @@ function sortRecords(a, b) {
 }
 
 function paginateRows(rows, filters = {}) {
-  const offset = Math.max(0, Number(filters.offset || 0));
-  const limit = filters.limit === undefined ? null : Math.max(0, Number(filters.limit));
-  if (limit === null || !Number.isFinite(limit)) return rows.slice(offset);
+  const offset = parseListBound(filters.offset, 0);
+  const limit = filters.limit === undefined ? null : parseListBound(filters.limit, 100);
+  if (limit === null) return rows.slice(offset);
   return rows.slice(offset, offset + limit);
 }
 
@@ -277,7 +277,18 @@ export async function readRaw(root, relPath) {
   const rootPath = resolve(root);
   const target = resolve(rootPath, String(relPath || ""));
   if (!target.startsWith(`${rootPath}${sep}`)) return null;
-  return readFile(target, "utf8");
+  try {
+    return await readFile(target, "utf8");
+  } catch (error) {
+    if (error && error.code === "ENOENT") return null;
+    throw error;
+  }
+}
+
+function parseListBound(value, fallback) {
+  const number = Number(value ?? fallback);
+  if (!Number.isFinite(number)) return fallback;
+  return Math.max(0, Math.floor(number));
 }
 
 export async function logEvent(root, name, entry) {

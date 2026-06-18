@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, readFile, rm, stat, utimes, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, stat, utimes, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -94,5 +94,50 @@ test("purge removes selected items and linked records only when forced", async (
     assert.equal((await listItems(root)).length, 1);
     assert.equal((await listActions(root)).length, 0);
     assert.equal((await listLearnings(root)).length, 0);
+  });
+});
+
+test("purge validates date selectors before deleting", async () => {
+  await withLifecycleStore(async (root, source) => {
+    const item = await createManualItem(root, source, {
+      title: "Keep me",
+      body: "Invalid dates must not match everything."
+    });
+    await saveItem(root, { ...item, status: "resolved" });
+
+    await assert.rejects(
+      () => purgeItems(root, { status: "resolved", before: "not-a-date", force: true }),
+      /--before must be a valid date/
+    );
+    assert.equal((await listItems(root)).length, 1);
+  });
+});
+
+test("purge removes quarantined attachment payloads with item raw payloads", async () => {
+  await withLifecycleStore(async (root, source) => {
+    const item = await createManualItem(root, source, {
+      title: "Attachment",
+      body: "Remove all linked payloads.",
+      queue: "resolved"
+    });
+    const attachmentPath = join("raw", "attachments", source.id, item.id, "note.txt");
+    await mkdir(join(root, "raw", "attachments", source.id, item.id), { recursive: true });
+    await writeFile(join(root, attachmentPath), "attachment bytes", "utf8");
+    await saveItem(root, {
+      ...item,
+      status: "resolved",
+      queue: "resolved",
+      attachments: [{ filename: "note.txt", quarantined: true, quarantine_path: attachmentPath }]
+    });
+    const rawPath = join(root, item.raw_payload_path);
+    const attachmentFullPath = join(root, attachmentPath);
+    assert.equal(existsSync(rawPath), true);
+    assert.equal(existsSync(attachmentFullPath), true);
+
+    const result = await purgeItems(root, { status: "resolved", force: true });
+    assert.ok(result.raw_payloads.includes(item.raw_payload_path));
+    assert.ok(result.raw_payloads.includes(attachmentPath));
+    assert.equal(existsSync(rawPath), false);
+    assert.equal(existsSync(attachmentFullPath), false);
   });
 });
