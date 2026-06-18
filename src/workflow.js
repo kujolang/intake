@@ -36,6 +36,7 @@ export async function syncAll(root, sourceId = null) {
 
 export async function syncOne(root, source) {
   const sources = await loadSources(root);
+  const settings = await loadSettings(root);
   const dedupe = new Set(await listItemDedupeKeys(root));
   const result = await syncSource(root, source);
   const saved = [];
@@ -59,7 +60,10 @@ export async function syncOne(root, source) {
       output_refs: [item.raw_payload_path],
       status: "ok"
     });
-    await classifyAndSave(root, item.id, { rebuildIndex: false });
+    await classifyAndSave(root, item.id, {
+      rebuildIndex: false,
+      ai: settings.ai_enabled === true
+    });
     saved.push(item.id);
   }
   if (saved.length > 0) await rebuildItemIndex(root);
@@ -122,11 +126,20 @@ function mergeAiResult(item, ai) {
   if (Array.isArray(ai.suggested_tags)) next.tags = uniq([...(next.tags || []), ...ai.suggested_tags]);
   if (ai.suggested_category && !next.category) next.category = ai.suggested_category;
   if (ai.suggested_queue && next.queue === "inbox") next.queue = ai.suggested_queue;
-  if (ai.risk_level && ["low", "medium", "high", "critical"].includes(ai.risk_level)) next.risk_level = ai.risk_level;
+  if (ai.risk_level && ["low", "medium", "high", "critical"].includes(ai.risk_level)) {
+    next.risk_level = highestRisk(next.risk_level, ai.risk_level);
+  }
   if (typeof ai.confidence === "number") next.ai_confidence = ai.confidence;
   if (ai.suggested_action) next.suggested_actions = uniq([...(next.suggested_actions || []), ai.suggested_action]);
   if (ai.human_review_required && next.status !== "resolved") next.status = "needs_review";
   return next;
+}
+
+function highestRisk(current, candidate) {
+  const order = { low: 0, medium: 1, high: 2, critical: 3 };
+  const currentRisk = order[current] === undefined ? "low" : current;
+  const candidateRisk = order[candidate] === undefined ? "low" : candidate;
+  return order[candidateRisk] > order[currentRisk] ? candidateRisk : currentRisk;
 }
 
 export async function proposeDraft(root, itemId, options = {}) {

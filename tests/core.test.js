@@ -52,6 +52,60 @@ test("prompt injection is critical and requires human review", async () => {
   });
 });
 
+test("AI classification cannot downgrade rule and safety risk", async () => {
+  await withStore(async (root, source) => {
+    const originalFetch = globalThis.fetch;
+    const previousKey = process.env.INTAKE_TEST_AI_KEY;
+    try {
+      await saveSettings(root, {
+        ...(await loadSettings(root)),
+        ai_enabled: true,
+        ai_provider: "openai-compatible",
+        ai_base_url: "https://llm.example.test/v1",
+        ai_api_key_env: "INTAKE_TEST_AI_KEY",
+        ai_model: "custom-classifier"
+      });
+      process.env.INTAKE_TEST_AI_KEY = "test-key";
+      globalThis.fetch = async () => ({
+        ok: true,
+        async json() {
+          return {
+            choices: [
+              {
+                message: {
+                  content: JSON.stringify({
+                    summary: "Customer asks about a possible refund.",
+                    suggested_category: "billing",
+                    suggested_tags: ["refund"],
+                    suggested_queue: "support",
+                    suggested_action: "draft_response",
+                    confidence: 0.94,
+                    risk_level: "low",
+                    human_review_required: false
+                  })
+                }
+              }
+            ]
+          };
+        }
+      });
+      const item = await createManualItem(root, source, {
+        title: "Refund needed",
+        body: "Please refund my last payment."
+      });
+      await saveItem(root, item);
+      const result = await classifyAndSave(root, item.id, { ai: true });
+      assert.equal(result.item.risk_level, "medium");
+      assert.equal(result.item.status, "needs_review");
+      assert.ok(result.item.safety_flags.includes("payment_or_refund"));
+    } finally {
+      globalThis.fetch = originalFetch;
+      if (previousKey === undefined) delete process.env.INTAKE_TEST_AI_KEY;
+      else process.env.INTAKE_TEST_AI_KEY = previousKey;
+    }
+  });
+});
+
 test("draft actions are approval gated before execution", async () => {
   await withStore(async (root, source) => {
     const item = await createManualItem(root, source, {
@@ -167,6 +221,83 @@ test("file sync skips bad files and normalizes JSON arrays", async () => {
     assert.match(errors, /file_sync_file_skipped/);
     assert.match(errors, /bad\.json/);
   } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("sync uses configured AI classification when AI is enabled", async () => {
+  const root = await mkdtemp(join(tmpdir(), "intake-file-ai-sync-test-"));
+  const drop = join(root, "drop");
+  const originalFetch = globalThis.fetch;
+  const previousKey = process.env.INTAKE_TEST_AI_KEY;
+  try {
+    await initStore(root);
+    await mkdir(drop, { recursive: true });
+    await writeFile(join(drop, "question.json"), JSON.stringify({
+      id: "setup-question",
+      title: "Where do I find the setup guide?",
+      body: "Can you send me the setup guide and IMAP/SMTP configuration docs?"
+    }), "utf8");
+    const source = makeSource("file", {
+      id: "file-drop",
+      name: "File Drop",
+      config: { path: drop },
+      default_queue: "inbox"
+    });
+    await saveSources(root, [source]);
+    await saveSettings(root, {
+      ...(await loadSettings(root)),
+      ai_enabled: true,
+      ai_provider: "openai-compatible",
+      ai_base_url: "https://llm.example.test/v1",
+      ai_api_key_env: "INTAKE_TEST_AI_KEY",
+      ai_model: "custom-classifier"
+    });
+    process.env.INTAKE_TEST_AI_KEY = "test-key";
+    globalThis.fetch = async (url, request) => {
+      assert.equal(url, "https://llm.example.test/v1/chat/completions");
+      assert.equal(request.method, "POST");
+      assert.equal(request.headers.authorization, "Bearer test-key");
+      const body = JSON.parse(request.body);
+      assert.equal(body.model, "custom-classifier");
+      return {
+        ok: true,
+        async json() {
+          return {
+            choices: [
+              {
+                message: {
+                  content: JSON.stringify({
+                    summary: "Customer needs setup documentation.",
+                    suggested_category: "support",
+                    suggested_tags: ["docs", "setup"],
+                    suggested_queue: "support",
+                    suggested_action: "draft_response",
+                    confidence: 0.91,
+                    risk_level: "low",
+                    human_review_required: false
+                  })
+                }
+              }
+            ]
+          };
+        }
+      };
+    };
+
+    await syncAll(root, "file-drop");
+    const [item] = await listItems(root);
+    assert.equal(item.ai_summary, "Customer needs setup documentation.");
+    assert.equal(item.ai_confidence, 0.91);
+    assert.equal(item.category, "support");
+    assert.equal(item.queue, "support");
+    assert.ok(item.tags.includes("docs"));
+    assert.ok(item.tags.includes("setup"));
+    assert.ok(item.suggested_actions.includes("draft_response"));
+  } finally {
+    globalThis.fetch = originalFetch;
+    if (previousKey === undefined) delete process.env.INTAKE_TEST_AI_KEY;
+    else process.env.INTAKE_TEST_AI_KEY = previousKey;
     await rm(root, { recursive: true, force: true });
   }
 });
