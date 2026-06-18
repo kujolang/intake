@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -37,4 +38,13 @@ test("shipcheck fails local release health when package metadata is missing", as
     await rm(root, { recursive: true, force: true });
     await rm(projectRoot, { recursive: true, force: true });
   }
+});
+
+test("benchmark threshold gate rejects invalid threshold overrides", () => {
+  const result = spawnSync(process.execPath, ["scripts/bench-threshold.mjs", "--dashboardSummaryMs", "NaN"], {
+    cwd: process.cwd(),
+    encoding: "utf8"
+  });
+  assert.equal(result.status, 2);
+  assert.match(result.stderr, /dashboardSummaryMs must be a positive number/);
 });

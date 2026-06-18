@@ -10,12 +10,12 @@ const benchArgs = [
   "--learnings", flags.learnings || "500"
 ];
 const thresholds = {
-  dashboard_summary_warm: Number(flags.dashboardSummaryMs || 1500),
-  dashboard_items_page_100_warm: Number(flags.dashboardItemsMs || 1000),
-  dashboard_actions_page_100_warm: Number(flags.dashboardActionsMs || 1000),
-  dashboard_learnings_page_100_warm: Number(flags.dashboardLearningsMs || 1000),
-  dashboard_approval_audit_warm: Number(flags.dashboardApprovalAuditMs || 1500),
-  sync_repeated_dedupe: Number(flags.syncRepeatedDedupeMs || 1000)
+  dashboard_summary_warm: positiveNumber(flags.dashboardSummaryMs ?? 1500, "dashboardSummaryMs"),
+  dashboard_items_page_100_warm: positiveNumber(flags.dashboardItemsMs ?? 1000, "dashboardItemsMs"),
+  dashboard_actions_page_100_warm: positiveNumber(flags.dashboardActionsMs ?? 1000, "dashboardActionsMs"),
+  dashboard_learnings_page_100_warm: positiveNumber(flags.dashboardLearningsMs ?? 1000, "dashboardLearningsMs"),
+  dashboard_approval_audit_warm: positiveNumber(flags.dashboardApprovalAuditMs ?? 1500, "dashboardApprovalAuditMs"),
+  sync_repeated_dedupe: positiveNumber(flags.syncRepeatedDedupeMs ?? 1000, "syncRepeatedDedupeMs")
 };
 
 const result = spawnSync(process.execPath, ["scripts/bench.mjs", ...benchArgs], {
@@ -66,4 +66,13 @@ function parseArgs(argv) {
     out[key] = argv[index + 1] && !argv[index + 1].startsWith("--") ? argv[++index] : true;
   }
   return out;
+}
+
+function positiveNumber(value, name) {
+  const number = Number(value);
+  if (!Number.isFinite(number) || number <= 0) {
+    console.error(`--${name} must be a positive number`);
+    process.exit(2);
+  }
+  return number;
 }

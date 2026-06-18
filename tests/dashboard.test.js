@@ -304,6 +304,23 @@ test("dashboard rejects oversized request bodies", async () => {
   });
 });
 
+test("dashboard returns precise client errors for malformed requests", async () => {
+  await withDashboard(async (dashboard) => {
+    const base = `http://${dashboard.host}:${dashboard.port}`;
+    const headers = { "x-intake-token": "test-token", "content-type": "application/json" };
+    const malformed = await fetch(`${base}/api/settings/auto-actions`, {
+      method: "POST",
+      headers,
+      body: "{not json"
+    });
+    assert.equal(malformed.status, 400);
+    assert.match(await malformed.text(), /invalid JSON request body/);
+
+    const missing = await fetch(`${base}/api/does-not-exist`, { headers });
+    assert.equal(missing.status, 404);
+  });
+});
+
 test("dashboard exposes quarantined attachment inventory and audited downloads", async () => {
   const root = await mkdtemp(join(tmpdir(), "intake-dashboard-attachments-test-"));
   const drop = join(root, "drop");

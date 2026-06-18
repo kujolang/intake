@@ -127,7 +127,7 @@ export async function startDashboard(root, options = {}) {
 
 async function routeApi(root, method, url, body, session = {}) {
   const parts = url.pathname.split("/").filter(Boolean);
-  if (parts[0] !== "api") throw new Error("not found");
+  if (parts[0] !== "api") throw httpError(404, "not found");
 
   if (method === "GET" && parts[1] === "summary") return summary(root);
   if (method === "GET" && parts[1] === "items" && parts.length === 2) {
@@ -179,7 +179,7 @@ async function routeApi(root, method, url, body, session = {}) {
     return { settings: await setAutoActions(root, body.enabled === true) };
   }
   if (method === "POST" && parts[1] === "settings" && parts[2] === "update") return updateSettings(root, body);
-  throw new Error("not found");
+  throw httpError(404, "not found");
 }
 
 async function summary(root) {
@@ -536,7 +536,17 @@ async function parseBody(req) {
   if (!["POST", "PUT", "PATCH"].includes(req.method)) return {};
   const raw = await readStreamText(req, { maxBytes: MAX_DASHBOARD_BODY_BYTES, label: "dashboard request body" });
   if (!raw) return {};
-  return JSON.parse(raw);
+  try {
+    return JSON.parse(raw);
+  } catch {
+    throw httpError(400, "invalid JSON request body");
+  }
+}
+
+function httpError(statusCode, message) {
+  const error = new Error(message);
+  error.statusCode = statusCode;
+  return error;
 }
 
 function authorized(req, url, token) {
