@@ -6,6 +6,7 @@ import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { attachmentInventory, readQuarantinedAttachment } from "./attachments.js";
 import { testSource } from "./adapters/index.js";
+import { AI_PROVIDER_PRESETS } from "./ai.js";
 import { buildSourceFromInput, sanitizeSource, sanitizeSources } from "./source-config.js";
 import { initStore, listActionIndex, listActions, listItemIndex, listLearningIndex, listLearnings, loadAction, loadItem, loadPolicies, loadRules, loadSettings, loadSources, readRaw, saveItem, savePolicies, saveSettings, saveSources, logEvent } from "./storage.js";
 import { evaluatePolicy } from "./policy.js";
@@ -362,6 +363,9 @@ async function updateSettings(root, body) {
     auto_actions_enabled: body.auto_actions_enabled === true,
     ai_enabled: body.ai_enabled === true,
     ai_provider: String(body.ai_provider || "none").trim() || "none",
+    ai_model: nullableString(body.ai_model),
+    ai_base_url: nullableString(body.ai_base_url),
+    ai_api_key_env: nullableString(body.ai_api_key_env),
     strata_import_dir: nullableString(body.strata_import_dir),
     totalrecall_export_dir: nullableString(body.totalrecall_export_dir),
     updated_at: isoNow()
@@ -642,9 +646,9 @@ function dashboardHtml() {
     .tab.active { background: var(--ink); color: white; border-color: var(--ink); }
     .split { display: grid; grid-template-columns: minmax(280px, 38%) minmax(320px, 1fr); gap: 12px; min-height: 70vh; }
     .list { border: 1px solid var(--line); border-radius: 8px; overflow: hidden; background: white; }
-    .item-row { width: 100%; display: grid; gap: 5px; padding: 11px; border: 0; border-bottom: 1px solid var(--line); border-radius: 0; text-align: left; background: white; }
+    .item-row { width: 100%; display: grid; gap: 5px; padding: 11px; border: 0; border-bottom: 1px solid var(--line); border-radius: 0; text-align: left; background: white; justify-content: stretch; justify-items: start; align-items: start; }
     .item-row.active { background: #e9f2ef; }
-    .item-title { font-weight: 700; overflow-wrap: anywhere; }
+    .item-title { width: 100%; font-weight: 700; overflow-wrap: anywhere; text-align: left; }
     .rowmeta { display: flex; gap: 6px; flex-wrap: wrap; color: var(--muted); font-size: 12px; }
     .pill { display: inline-flex; align-items: center; border: 1px solid var(--line); border-radius: 999px; padding: 2px 7px; background: #fafbfb; font-size: 12px; }
     .pill.high, .pill.critical { color: var(--danger); border-color: #e6b0b9; }
@@ -665,6 +669,15 @@ function dashboardHtml() {
     .work-field { display: grid; gap: 5px; margin: 10px 0; }
     .work-field label { color: var(--muted); font-size: 12px; }
     .work-field .formrow { margin: 0; }
+    .settings-card { border: 1px solid var(--line); border-radius: 8px; padding: 14px; background: white; display: grid; gap: 12px; }
+    .settings-head { display: flex; justify-content: space-between; align-items: start; gap: 12px; }
+    .settings-head b { font-size: 15px; }
+    .settings-grid { display: grid; grid-template-columns: minmax(180px, 240px) minmax(0, 1fr); gap: 10px 14px; align-items: center; }
+    .settings-grid label { display: contents; }
+    .settings-grid label > span { color: var(--muted); font-size: 13px; padding-top: 8px; }
+    .settings-grid input, .settings-grid select { width: 100%; }
+    .settings-note { border-left: 3px solid var(--accent); padding: 8px 10px; background: #eef6f3; color: var(--muted); font-size: 13px; line-height: 1.4; }
+    .rule-match { display: grid; gap: 3px; border: 1px solid var(--line); border-radius: 7px; padding: 8px; background: #fbfdfc; }
     .hidden { display: none !important; }
     .stack { display: grid; gap: 10px; }
     .action-row, .learning-row, .rule-row, .log-row, .source-row, .empty-state { border: 1px solid var(--line); border-radius: 7px; padding: 10px; background: white; }
@@ -689,7 +702,7 @@ function dashboardHtml() {
     .diagnostic-row .skip { color: var(--muted); font-weight: 700; }
     @media (max-width: 1120px) { .app { grid-template-columns: 240px 1fr; } .sidepanel { grid-column: 1 / -1; border-left: 0; border-top: 1px solid var(--line); } }
     @media (max-width: 960px) { .setup-steps, .preset-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
-    @media (max-width: 760px) { .app, .split { display: block; } aside, main, .sidepanel { border: 0; border-bottom: 1px solid var(--line); } .list { margin-bottom: 12px; } .source-form, .setup-steps, .preset-grid { grid-template-columns: 1fr; } .source-form .wide, .diagnostics { grid-column: auto; } .diagnostic-row { grid-template-columns: 1fr; } }
+    @media (max-width: 760px) { .app, .split { display: block; } aside, main, .sidepanel { border: 0; border-bottom: 1px solid var(--line); } .list { margin-bottom: 12px; } .source-form, .setup-steps, .preset-grid, .settings-grid { grid-template-columns: 1fr; } .settings-grid label { display: grid; gap: 4px; } .source-form .wide, .diagnostics { grid-column: auto; } .diagnostic-row { grid-template-columns: 1fr; } }
   </style>
 </head>
 <body>
@@ -741,6 +754,7 @@ function dashboardHtml() {
   </div>
   <script>
     const ICONS = ${JSON.stringify(ICONS)};
+    const AI_PROVIDER_PRESETS = ${JSON.stringify(AI_PROVIDER_PRESETS)};
     const tokenFromUrl = new URL(location.href).searchParams.get("token");
     if (tokenFromUrl) sessionStorage.setItem("intakeToken", tokenFromUrl);
     const token = sessionStorage.getItem("intakeToken") || "";
@@ -869,10 +883,29 @@ function dashboardHtml() {
         ]),
         el("div", { class: "field" }, [el("b", { text: "Normalized" }), el("div", { class: "bodytext", text: item.normalized_text || item.body || "" })]),
         el("div", { class: "field" }, [el("b", { text: "AI Summary" }), el("div", { class: "bodytext", text: item.ai_summary || "none" })]),
+        ruleMatchSection(item),
         attachmentSection(item),
         el("div", { class: "field" }, [el("b", { text: "Tags" }), el("div", { class: "rowmeta" }, (item.tags || []).map((t) => pill(t)))])
       );
       renderWorkSurface(item);
+    }
+    function ruleMatchSection(item) {
+      const matches = item.policy?.rule_matches || [];
+      if (!matches.length) {
+        return el("div", { class: "field" }, [
+          el("b", { text: "Classification source" }),
+          el("div", { class: "muted", text: "No deterministic rules matched. AI only runs when enabled and requested." })
+        ]);
+      }
+      return el("div", { class: "field" }, [
+        el("b", { text: "Classification source" }),
+        el("div", { class: "muted", text: "Category, intent, queue, risk, and tags can be set by deterministic rules before any AI provider is called." }),
+        el("div", { class: "stack" }, matches.map((match) => el("div", { class: "rule-match" }, [
+          el("b", { text: match.id }),
+          el("div", { class: "muted", text: match.description || "Matched deterministic rule" }),
+          el("div", { class: "rowmeta" }, (match.matched_terms || []).map((term) => pill(term)))
+        ])))
+      ]);
     }
     function attachmentSection(item) {
       const attachments = item.attachments || [];
@@ -901,7 +934,7 @@ function dashboardHtml() {
       const queueInput = el("input", { id: "queueInput", placeholder: "Move to queue", value: item.queue });
       qs("#workSurface").replaceChildren(
         el("div", { class: "quick-actions" }, [
-          iconButton("Classify", () => itemPost(item.id, "classify", {}), "shield"),
+          iconButton(state.summary?.settings?.ai_enabled ? "Classify with AI" : "Classify with rules", () => itemPost(item.id, "classify", { ai: state.summary?.settings?.ai_enabled === true }), "shield"),
           iconButton("Draft", () => itemPost(item.id, "draft", { body: draft.value }), "send"),
           iconButton("Learn", () => itemPost(item.id, "learn", {}), "brain"),
           iconButton("Resolve", () => itemPost(item.id, "resolve", {}), "check", "primary"),
@@ -1347,7 +1380,24 @@ function dashboardHtml() {
       auto.checked = settings.auto_actions_enabled === true;
       const aiEnabled = el("input", { id: "settingsAiEnabled", type: "checkbox" });
       aiEnabled.checked = settings.ai_enabled === true;
-      const provider = input("settingsAiProvider", settings.ai_provider || "none");
+      const provider = select("settingsAiProvider", Object.keys(AI_PROVIDER_PRESETS), settings.ai_provider || "none");
+      const selectedPreset = AI_PROVIDER_PRESETS[settings.ai_provider || "none"] || AI_PROVIDER_PRESETS.none;
+      const model = input("settingsAiModel", settings.ai_model || selectedPreset.default_model || "");
+      const baseUrl = input("settingsAiBaseUrl", settings.ai_base_url || selectedPreset.base_url || "");
+      const apiKeyEnv = input("settingsAiApiKeyEnv", settings.ai_api_key_env || selectedPreset.api_key_env || "");
+      model.dataset.fromPreset = settings.ai_model ? "false" : "true";
+      baseUrl.dataset.fromPreset = settings.ai_base_url ? "false" : "true";
+      apiKeyEnv.dataset.fromPreset = settings.ai_api_key_env ? "false" : "true";
+      for (const control of [model, baseUrl, apiKeyEnv]) control.addEventListener("input", () => { control.dataset.fromPreset = "false"; });
+      provider.addEventListener("change", () => {
+        const preset = AI_PROVIDER_PRESETS[provider.value] || AI_PROVIDER_PRESETS.none;
+        if (!model.value || model.dataset.fromPreset === "true") model.value = preset.default_model || "";
+        if (!baseUrl.value || baseUrl.dataset.fromPreset === "true") baseUrl.value = preset.base_url || "";
+        if (!apiKeyEnv.value || apiKeyEnv.dataset.fromPreset === "true") apiKeyEnv.value = preset.api_key_env || "";
+        model.dataset.fromPreset = "true";
+        baseUrl.dataset.fromPreset = "true";
+        apiKeyEnv.dataset.fromPreset = "true";
+      });
       const strata = input("settingsStrata", settings.strata_import_dir || "");
       const recall = input("settingsRecall", settings.totalrecall_export_dir || "");
       const policyText = el("textarea", { id: "policyJson" });
@@ -1356,20 +1406,32 @@ function dashboardHtml() {
       const previewAction = input("policyPreviewAction", "draft_response");
       const previewResult = state.policyPreview ? el("pre", { text: JSON.stringify(state.policyPreview, null, 2) }) : el("div", { class: "muted", text: "Run a dry-run to see policy reasons before approving or changing policy." });
       qs("#settingsPanel").replaceChildren(
-        el("div", { class: "source-row" }, [
-          el("b", { text: "Runtime settings" }),
-          el("div", { class: "grid2" }, [
+        el("div", { class: "settings-card" }, [
+          el("div", { class: "settings-head" }, [
+            el("div", {}, [
+              el("b", { text: "Runtime settings" }),
+              el("div", { class: "muted", text: "AI provider presets follow the Kujo AI SDK OpenAI-compatible contract. Keep API keys in environment variables, not settings." })
+            ])
+          ]),
+          el("div", { class: "settings-grid" }, [
             checkboxLabel("Auto-actions", auto),
             checkboxLabel("AI enabled", aiEnabled),
             label("AI provider", provider),
+            label("Model", model),
+            label("Base URL", baseUrl),
+            label("API key env", apiKeyEnv),
             label("Strata import dir", strata),
             label("TotalRecall export dir", recall)
           ]),
+          el("div", { class: "settings-note", text: "Use OpenAI, OpenRouter, or DeepSeek presets for common providers. Choose Custom OpenAI-compatible for any /chat/completions endpoint and set its base URL, model, and API-key env name." }),
           el("div", { class: "controls" }, [button("Save settings", async () => {
             await api("/api/settings/update", { method: "POST", body: JSON.stringify({
               auto_actions_enabled: auto.checked,
               ai_enabled: aiEnabled.checked,
               ai_provider: provider.value,
+              ai_model: model.value,
+              ai_base_url: baseUrl.value,
+              ai_api_key_env: apiKeyEnv.value,
               strata_import_dir: strata.value,
               totalrecall_export_dir: recall.value
             }) });

@@ -79,14 +79,20 @@ test("dashboard updates runtime settings and policies", async () => {
       body: JSON.stringify({
         auto_actions_enabled: true,
         ai_enabled: true,
-        ai_provider: "fixture",
+        ai_provider: "openrouter",
+        ai_model: "openai/gpt-4.1-mini",
+        ai_base_url: "https://openrouter.ai/api/v1",
+        ai_api_key_env: "OPENROUTER_API_KEY",
         strata_import_dir: "/tmp/strata",
         totalrecall_export_dir: "/tmp/recall"
       })
     })).json();
     assert.equal(updated.settings.auto_actions_enabled, true);
     assert.equal(updated.settings.ai_enabled, true);
-    assert.equal(updated.settings.ai_provider, "fixture");
+    assert.equal(updated.settings.ai_provider, "openrouter");
+    assert.equal(updated.settings.ai_model, "openai/gpt-4.1-mini");
+    assert.equal(updated.settings.ai_base_url, "https://openrouter.ai/api/v1");
+    assert.equal(updated.settings.ai_api_key_env, "OPENROUTER_API_KEY");
 
     const current = await (await fetch(`${base}/api/policies`, { headers })).json();
     const policies = current.policies.map((policy) => policy.id === "default-safe-human-gate" ? {
@@ -393,5 +399,7 @@ test("dashboard HTML keeps icon controls accessible", async () => {
     assert.match(html, /First source setup/);
     assert.match(html, /Source setup checklist/);
     assert.match(html, /INTAKE_GITHUB_API_TOKEN/);
+    assert.match(html, /AI_PROVIDER_PRESETS/);
+    assert.match(html, /Custom OpenAI-compatible/);
   });
 });
