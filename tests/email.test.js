@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { testEmailConnection } from "../src/adapters/email.js";
+import { nextUidRange, testEmailConnection } from "../src/adapters/email.js";
 import { makeSource } from "../src/models.js";
 
 test("email source test reports IMAP and SMTP readiness separately", async () => {
@@ -22,4 +22,10 @@ test("email source test reports IMAP and SMTP readiness separately", async () =>
   assert.equal(result.checks.imap.ok, false);
   assert.equal(result.checks.smtp.ok, false);
   assert.match(result.errors.join(" "), /INTAKE_MISSING_EMAIL_PASSWORD/);
+});
+
+test("email sync builds UID ranges from UID cursors", () => {
+  assert.equal(nextUidRange({ cursor: null }, { uidNext: 10 }), "1:*");
+  assert.equal(nextUidRange({ cursor: { uid: 1206 } }, { uidNext: 1349 }), "1207:*");
+  assert.equal(nextUidRange({ cursor: { uid: 1348 } }, { uidNext: 1349 }), null);
 });

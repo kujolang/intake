@@ -55,8 +55,11 @@ export async function syncEmailSource(root, source) {
   const items = [];
   let maxUid = Number(source.cursor?.uid || 0);
   try {
-    const query = maxUid > 0 ? `${maxUid + 1}:*` : "1:*";
-    for await (const message of client.fetch(query, { uid: true, envelope: true, source: true, flags: true })) {
+    const query = nextUidRange(source, client.mailbox);
+    if (!query) {
+      return { items, cursor: { uid: maxUid, synced_at: new Date().toISOString() } };
+    }
+    for await (const message of client.fetch(query, { uid: true, envelope: true, source: true, flags: true }, { uid: true })) {
       if (!message.uid || message.uid <= maxUid) continue;
       maxUid = Math.max(maxUid, message.uid);
       const item = await itemFromMessage(root, source, message);
@@ -235,6 +238,13 @@ function testTimeoutMs(source) {
 
 function headerValue(value) {
   return String(value || "").replace(/[\r\n]+/g, " ").trim();
+}
+
+export function nextUidRange(source, mailbox = {}) {
+  const cursorUid = Number(source.cursor?.uid || 0);
+  const uidNext = Number(mailbox.uidNext || 0);
+  if (Number.isFinite(uidNext) && uidNext > 0 && cursorUid >= uidNext - 1) return null;
+  return cursorUid > 0 ? `${cursorUid + 1}:*` : "1:*";
 }
 
 function providerErrorMessage(error, source) {

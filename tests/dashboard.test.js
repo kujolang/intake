@@ -401,5 +401,6 @@ test("dashboard HTML keeps icon controls accessible", async () => {
     assert.match(html, /INTAKE_GITHUB_API_TOKEN/);
     assert.match(html, /AI_PROVIDER_PRESETS/);
     assert.match(html, /Custom OpenAI-compatible/);
+    assert.match(html, /refreshWithSync/);
   });
 });

@@ -797,6 +797,27 @@ function dashboardHtml() {
       renderShell();
       renderCurrent();
     }
+    async function refreshWithSync() {
+      if (!token) { setStatus("Missing token"); return; }
+      if (!state.sources.length) await load();
+      const syncable = state.sources.filter((source) => source.enabled && ["email", "file"].includes(source.type));
+      if (!syncable.length) {
+        await load();
+        setStatus("Refreshed");
+        return;
+      }
+      setStatus("Syncing " + syncable.length + " source" + (syncable.length === 1 ? "" : "s") + "...");
+      const results = [];
+      for (const source of syncable) {
+        results.push(await api("/api/sources/" + encodeURIComponent(source.id) + "/sync", { method: "POST", body: "{}" }));
+      }
+      await load();
+      const failures = results.filter((entry) => entry.result?.ok === false);
+      const saved = results
+        .flatMap((entry) => entry.result?.sync || [])
+        .reduce((total, row) => total + (row.saved?.length || 0), 0);
+      setStatus(failures.length ? "Sync needs attention" : "Synced " + saved + " new item" + (saved === 1 ? "" : "s"));
+    }
     function renderShell() {
       const m = state.summary.counts;
       qs("#metrics").replaceChildren(
@@ -1319,11 +1340,16 @@ function dashboardHtml() {
         await load();
         state.selectedView = "sources";
         state.selectedSourceId = id;
-        setStatus(action === "test" ? sourceTestSummary(result.result) : "Done");
+        setStatus(action === "test" ? sourceTestSummary(result.result) : action === "sync" ? sourceSyncSummary(result.result) : "Done");
       } finally {
         state.pendingSourceAction = "";
         renderCurrent();
       }
+    }
+    function sourceSyncSummary(result) {
+      if (!result?.ok) return "Source sync failed: " + ((result?.errors || []).join("; ") || "unknown error");
+      const saved = (result.sync || []).reduce((total, row) => total + (row.saved?.length || 0), 0);
+      return "Source synced: " + saved + " new item" + (saved === 1 ? "" : "s");
     }
     function renderSourceDiagnostics(source) {
       const result = state.sourceDiagnostics[source.id] || source.last_test_result;
@@ -1533,7 +1559,7 @@ function dashboardHtml() {
       return btn;
     }
     document.querySelectorAll(".tab").forEach((tab) => tab.addEventListener("click", () => { state.selectedView = tab.dataset.view; renderCurrent(); }));
-    qs("#refreshBtn").addEventListener("click", load);
+    qs("#refreshBtn").addEventListener("click", () => refreshWithSync().catch((error) => setStatus(error.message)));
     qs("#killSwitch").addEventListener("click", async () => { await api("/api/settings/auto-actions", { method: "POST", body: JSON.stringify({ enabled: !state.summary.settings.auto_actions_enabled }) }); await load(); });
     qs("#searchBox").addEventListener("input", renderItems);
     qs("#riskFilter").addEventListener("change", renderItems);
