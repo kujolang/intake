@@ -3,7 +3,7 @@ import { extname, join } from "node:path";
 import { simpleParser } from "mailparser";
 import { attachmentMetadata } from "../attachments.js";
 import { makeItem } from "../models.js";
-import { storeRaw } from "../storage.js";
+import { logEvent, storeRaw } from "../storage.js";
 import { shortHash } from "../util.js";
 
 const SUPPORTED = new Set([".txt", ".md", ".json", ".eml"]);
@@ -21,24 +21,36 @@ export async function syncFileSource(root, source) {
 
   for (const name of names.sort()) {
     const path = join(folder, name);
-    const info = await stat(path);
+    let info;
+    try {
+      info = await stat(path);
+    } catch (error) {
+      if (error?.code === "ENOENT") continue;
+      await logSkippedFile(root, source, name, error);
+      continue;
+    }
     if (!info.isFile()) continue;
     const ext = extname(name).toLowerCase();
     if (!SUPPORTED.has(ext)) continue;
     const nativeId = `${name}:${info.mtimeMs}:${info.size}`;
     if (seen.has(nativeId)) continue;
-    const buffer = await readFile(path);
-    const rawId = shortHash(nativeId, 16);
-    let item;
-    if (ext === ".eml") {
-      item = await itemFromEml(root, source, rawId, nativeId, buffer);
-    } else if (ext === ".json") {
-      item = await itemFromJson(root, source, rawId, nativeId, buffer, name);
-    } else {
-      item = await itemFromText(root, source, rawId, nativeId, buffer, name);
+    try {
+      const buffer = await readFile(path);
+      const rawId = shortHash(nativeId, 16);
+      let item;
+      if (ext === ".eml") {
+        item = await itemFromEml(root, source, rawId, nativeId, buffer);
+      } else if (ext === ".json") {
+        item = await itemFromJson(root, source, rawId, nativeId, buffer, name);
+      } else {
+        item = await itemFromText(root, source, rawId, nativeId, buffer, name);
+      }
+      items.push(item);
+      seen.add(nativeId);
+    } catch (error) {
+      if (error?.code === "ENOENT") continue;
+      await logSkippedFile(root, source, name, error);
     }
-    items.push(item);
-    seen.add(nativeId);
   }
 
   return { items, cursor: { seen: [...seen].slice(-5000), synced_at: new Date().toISOString() } };
@@ -72,9 +84,9 @@ async function itemFromJson(root, source, rawId, nativeId, buffer, name) {
     body,
     author: payload.author || payload.sender || null,
     author_email: payload.author_email || payload.email || null,
-    participants: payload.participants || [],
+    participants: stringArray(payload.participants),
     queue: payload.queue || source.default_queue || "inbox",
-    tags: payload.tags || [],
+    tags: stringArray(payload.tags),
     metadata: { file_name: name, json_payload: true }
   });
   const rawPath = await storeRaw(root, "files", source.id, temp.id, "json", payload);
@@ -105,4 +117,20 @@ async function itemFromEml(root, source, rawId, nativeId, buffer) {
 
 function firstLine(text) {
   return String(text || "").split(/\r?\n/).map((line) => line.trim()).find(Boolean);
+}
+
+function stringArray(value) {
+  if (Array.isArray(value)) return value.map((entry) => String(entry).trim()).filter(Boolean);
+  if (value === undefined || value === null || value === "") return [];
+  return String(value).split(",").map((entry) => entry.trim()).filter(Boolean);
+}
+
+async function logSkippedFile(root, source, fileName, error) {
+  await logEvent(root, "errors", {
+    source_id: source.id,
+    event_type: "file_sync_file_skipped",
+    status: "failed",
+    error: error.message,
+    input_refs: [fileName]
+  });
 }

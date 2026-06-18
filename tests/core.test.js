@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -135,11 +135,48 @@ test("sync dedupes duplicate source-native ids within the same batch", async () 
   }
 });
 
+test("file sync skips bad files and normalizes JSON arrays", async () => {
+  const root = await mkdtemp(join(tmpdir(), "intake-file-sync-skip-test-"));
+  const drop = join(root, "drop");
+  try {
+    await initStore(root);
+    await mkdir(drop, { recursive: true });
+    await writeFile(join(drop, "bad.json"), "{not valid json", "utf8");
+    await writeFile(join(drop, "good.json"), JSON.stringify({
+      id: "good-json",
+      title: "Good",
+      body: "How do I configure this?",
+      tags: "support, docs",
+      participants: "one@example.test, two@example.test"
+    }), "utf8");
+    const source = makeSource("file", {
+      id: "file-drop",
+      name: "File Drop",
+      config: { path: drop },
+      default_queue: "inbox"
+    });
+    await saveSources(root, [source]);
+    await syncAll(root, "file-drop");
+
+    const items = await listItems(root);
+    assert.equal(items.length, 1);
+    assert.ok(items[0].tags.includes("support"));
+    assert.ok(items[0].tags.includes("docs"));
+    assert.deepEqual(items[0].participants, ["one@example.test", "two@example.test"]);
+    const errors = await readFile(join(root, "logs", "errors.jsonl"), "utf8");
+    assert.match(errors, /file_sync_file_skipped/);
+    assert.match(errors, /bad\.json/);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test("storage rejects unsafe ids and raw path traversal", async () => {
   await withStore(async (root) => {
     await assert.rejects(() => loadItem(root, "../config/sources"), /invalid item id/);
     await assert.rejects(() => storeRaw(root, "files", "../outside", "raw-id", "txt", "nope"), /invalid source id/);
     assert.equal(await readRaw(root, "../package.json"), null);
+    assert.equal(await readRaw(root, "raw/files/manual/missing.txt"), null);
   });
 });
 
@@ -156,6 +193,8 @@ test("item index supports filtered pagination for dashboard list views", async (
     assert.ok(first[0].id);
     assert.ok(first[0].dedupe_key);
     assert.equal(first[0].body, undefined);
+    const invalidLimit = await listItemIndex(root, { queue: "support", limit: "not-a-number" });
+    assert.equal(invalidLimit.length, 3);
   });
 });
 
