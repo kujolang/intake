@@ -6,7 +6,7 @@ import { join } from "node:path";
 import { createManualItem } from "../src/adapters/manual.js";
 import { startDashboard } from "../src/dashboard.js";
 import { makeSource } from "../src/models.js";
-import { initStore, listItems, loadSources, saveItem, saveSources } from "../src/storage.js";
+import { initStore, listItems, loadItem, loadSources, saveItem, saveSources } from "../src/storage.js";
 import { classifyAndSave, syncAll } from "../src/workflow.js";
 
 async function withDashboard(fn) {
@@ -187,6 +187,51 @@ test("dashboard creates and edits actions and rules", async () => {
     });
     assert.equal(badRule.status, 400);
   });
+});
+
+test("dashboard bulk resolves selected items", async () => {
+  const root = await mkdtemp(join(tmpdir(), "intake-dashboard-bulk-test-"));
+  let dashboard;
+  try {
+    await initStore(root);
+    const source = makeSource("manual", { id: "manual", name: "Manual" });
+    await saveSources(root, [source]);
+    const items = [];
+    for (const title of ["First bulk item", "Second bulk item", "Third bulk item"]) {
+      const item = await createManualItem(root, source, { title, body: "Bulk dashboard test" });
+      await saveItem(root, item);
+      items.push(item);
+    }
+    dashboard = await startDashboard(root, { port: 0, token: "test-token" });
+    const base = `http://${dashboard.host}:${dashboard.port}`;
+    const headers = { "x-intake-token": "test-token", "content-type": "application/json" };
+
+    const resolved = await (await fetch(`${base}/api/items/bulk`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ action: "resolve", ids: [items[0].id, items[1].id] })
+    })).json();
+    assert.equal(resolved.updated_count, 2);
+    assert.deepEqual(resolved.item_ids, [items[0].id, items[1].id]);
+
+    const first = await loadItem(root, items[0].id);
+    const second = await loadItem(root, items[1].id);
+    const third = await loadItem(root, items[2].id);
+    assert.equal(first.status, "resolved");
+    assert.equal(first.queue, "resolved");
+    assert.equal(second.status, "resolved");
+    assert.equal(third.status, "new");
+
+    const bad = await fetch(`${base}/api/items/bulk`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ action: "block", ids: [items[2].id] })
+    });
+    assert.equal(bad.status, 400);
+  } finally {
+    if (dashboard) await new Promise((resolve) => dashboard.server.close(resolve));
+    await rm(root, { recursive: true, force: true });
+  }
 });
 
 test("dashboard previews policy and summarizes approval audit", async () => {
@@ -481,5 +526,8 @@ test("dashboard HTML keeps icon controls accessible", async () => {
     assert.match(html, /editor-grid/);
     assert.match(html, /newActionBody/);
     assert.match(html, /ruleTerms/);
+    assert.match(html, /bulkbar/);
+    assert.match(html, /selectedItemIds/);
+    assert.match(html, /Resolve selected/);
   });
 });

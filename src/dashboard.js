@@ -135,6 +135,9 @@ async function routeApi(root, method, url, body, session = {}) {
   if (method === "GET" && parts[1] === "items" && parts.length === 2) {
     return { items: await listItemIndex(root, filtersFrom(url)) };
   }
+  if (method === "POST" && parts[1] === "items" && parts[2] === "bulk") {
+    return mutateItemsBulk(root, body);
+  }
   if (method === "GET" && parts[1] === "items" && parts[3] === "raw") {
     const item = await requireItem(root, parts[2]);
     return { item_id: item.id, raw: await readRaw(root, item.raw_payload_path) };
@@ -244,6 +247,34 @@ async function mutateItem(root, itemId, action, body) {
     return { item: next };
   }
   throw new Error("unknown item action");
+}
+
+async function mutateItemsBulk(root, body) {
+  const action = nullableString(body.action) || "resolve";
+  const ids = Array.isArray(body.ids) ? uniq(body.ids.map((id) => String(id || "").trim())) : [];
+  if (!ids.length) throw httpError(400, "bulk item action requires ids");
+  if (ids.length > 500) throw httpError(400, "bulk item action is limited to 500 items");
+  if (action !== "resolve") throw httpError(400, "unsupported bulk item action");
+  const now = isoNow();
+  const updated = [];
+  for (const id of ids) {
+    const item = await requireItem(root, id);
+    const next = { ...item, status: "resolved", queue: "resolved", updated_at: now };
+    await saveItem(root, next);
+    updated.push(next.id);
+    await logEvent(root, "audit", {
+      source_id: item.source_id,
+      item_id: item.id,
+      event_type: "dashboard_item_resolved",
+      status: "ok"
+    });
+  }
+  await logEvent(root, "audit", {
+    event_type: "dashboard_bulk_items_resolved",
+    status: "ok",
+    output_refs: updated
+  });
+  return { action, updated_count: updated.length, item_ids: updated };
 }
 
 async function createDashboardAction(root, body) {
@@ -756,8 +787,13 @@ function dashboardHtml() {
     .tab.active { background: var(--ink); color: white; border-color: var(--ink); }
     .split { display: grid; grid-template-columns: minmax(280px, 38%) minmax(320px, 1fr); gap: 12px; min-height: 70vh; }
     .list { border: 1px solid var(--line); border-radius: 8px; overflow: hidden; background: white; }
-    .item-row { width: 100%; display: grid; gap: 5px; padding: 11px; border: 0; border-bottom: 1px solid var(--line); border-radius: 0; text-align: left; background: white; justify-content: stretch; justify-items: start; align-items: start; }
-    .item-row.active { background: #e9f2ef; }
+    .bulkbar { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 10px; border-bottom: 1px solid var(--line); background: #f8fbfa; }
+    .bulkbar .controls { margin: 0; }
+    .item-row-wrap { display: grid; grid-template-columns: 34px minmax(0, 1fr); align-items: stretch; border-bottom: 1px solid var(--line); background: white; }
+    .item-row-wrap.active, .item-row-wrap.active .item-row { background: #e9f2ef; }
+    .item-check { display: grid; place-items: start center; padding-top: 13px; }
+    .item-check input { width: 16px; height: 16px; }
+    .item-row { width: 100%; display: grid; gap: 5px; padding: 11px 11px 11px 0; border: 0; border-radius: 0; text-align: left; background: white; justify-content: stretch; justify-items: start; align-items: start; }
     .item-title { width: 100%; font-weight: 700; overflow-wrap: anywhere; text-align: left; }
     .rowmeta { display: flex; gap: 6px; flex-wrap: wrap; color: var(--muted); font-size: 12px; }
     .pill { display: inline-flex; align-items: center; border: 1px solid var(--line); border-radius: 999px; padding: 2px 7px; background: #fafbfb; font-size: 12px; }
@@ -873,7 +909,7 @@ function dashboardHtml() {
     const tokenFromUrl = new URL(location.href).searchParams.get("token");
     if (tokenFromUrl) sessionStorage.setItem("intakeToken", tokenFromUrl);
     const token = sessionStorage.getItem("intakeToken") || "";
-    const state = { items: [], sources: [], summary: null, selectedQueue: "", sidebarFilter: "", selectedItemId: null, selectedSourceId: "", selectedRuleId: "", selectedItem: null, selectedView: "items", sourceDiagnostics: {}, pendingSourceAction: "", policyPreview: null, setupProfile: "email", approvalAuditFilters: { operator: "", action_type: "", source_id: "", status: "", date_from: "", date_to: "" } };
+    const state = { items: [], sources: [], summary: null, selectedQueue: "", sidebarFilter: "", selectedItemIds: new Set(), selectedItemId: null, selectedSourceId: "", selectedRuleId: "", selectedItem: null, selectedView: "items", sourceDiagnostics: {}, pendingSourceAction: "", policyPreview: null, setupProfile: "email", approvalAuditFilters: { operator: "", action_type: "", source_id: "", status: "", date_from: "", date_to: "" } };
     const qs = (s) => document.querySelector(s);
     const el = (tag, attrs = {}, children = []) => {
       const node = document.createElement(tag);
@@ -909,6 +945,8 @@ function dashboardHtml() {
       state.summary = summary;
       state.items = items.items;
       state.sources = sources.sources;
+      const knownIds = new Set(state.items.map((item) => item.id));
+      state.selectedItemIds = new Set([...state.selectedItemIds].filter((id) => knownIds.has(id)));
       renderShell();
       renderCurrent();
     }
@@ -1011,13 +1049,48 @@ function dashboardHtml() {
         qs("#workSurface").replaceChildren();
         return;
       }
-      qs("#itemList").replaceChildren(...rows.map((item) =>
-        el("button", { class: "item-row" + (state.selectedItemId === item.id ? " active" : ""), onclick: () => selectItem(item.id) }, [
+      qs("#itemList").replaceChildren(bulkBar(rows), ...rows.map((item) => itemRow(item)));
+      if (!state.selectedItemId && rows[0]) selectItem(rows[0].id);
+    }
+    function bulkBar(rows) {
+      const visibleIds = rows.map((item) => item.id);
+      const selectedVisible = visibleIds.filter((id) => state.selectedItemIds.has(id)).length;
+      const selectedTotal = state.selectedItemIds.size;
+      return el("div", { class: "bulkbar" }, [
+        el("div", { class: "muted", text: selectedTotal + " selected" + (selectedVisible !== selectedTotal ? " · " + selectedVisible + " visible" : "") }),
+        el("div", { class: "controls" }, [
+          button("Select all", () => { for (const id of visibleIds) state.selectedItemIds.add(id); renderItems(); }, "", rows.length === 0, "list"),
+          button("Select 10", () => { for (const id of visibleIds.slice(0, 10)) state.selectedItemIds.add(id); renderItems(); }, "", rows.length === 0, "list"),
+          button("Clear", () => { state.selectedItemIds.clear(); renderItems(); }, "", selectedTotal === 0, "x"),
+          button("Resolve selected", () => bulkResolveSelected(), "primary", selectedTotal === 0, "check")
+        ])
+      ]);
+    }
+    function itemRow(item) {
+      const checked = state.selectedItemIds.has(item.id);
+      const checkboxAttrs = { type: "checkbox", "aria-label": "Select " + item.title, onchange: (event) => toggleItemSelection(item.id, event.target.checked) };
+      if (checked) checkboxAttrs.checked = "checked";
+      return el("div", { class: "item-row-wrap" + (state.selectedItemId === item.id ? " active" : "") }, [
+        el("label", { class: "item-check" }, [el("input", checkboxAttrs)]),
+        el("button", { class: "item-row", onclick: () => selectItem(item.id) }, [
           el("div", { class: "item-title", text: item.title }),
           el("div", { class: "rowmeta" }, [pill(item.queue), pill(item.status), pill(item.risk_level, item.risk_level), pill(item.source_type)])
         ])
-      ));
-      if (!state.selectedItemId && rows[0]) selectItem(rows[0].id);
+      ]);
+    }
+    function toggleItemSelection(id, selected) {
+      if (selected) state.selectedItemIds.add(id);
+      else state.selectedItemIds.delete(id);
+      renderItems();
+    }
+    async function bulkResolveSelected() {
+      const ids = [...state.selectedItemIds];
+      if (!ids.length) return;
+      setStatus("Resolving " + ids.length + " item" + (ids.length === 1 ? "" : "s") + "...");
+      const result = await api("/api/items/bulk", { method: "POST", body: JSON.stringify({ action: "resolve", ids }) });
+      state.selectedItemIds.clear();
+      await load();
+      setStatus("Resolved " + result.updated_count + " item" + (result.updated_count === 1 ? "" : "s"));
     }
     async function selectItem(id) {
       state.selectedItemId = id;
