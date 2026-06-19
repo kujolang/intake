@@ -44,14 +44,16 @@ Production-oriented safeguards already in place:
 - Source templates for common systems.
 - Deterministic audit/error/action/sync logs with redaction.
 - Bounded dashboard and webhook request bodies.
+- Dashboard launch tokens are removed from the browser URL after capture.
 - Constant-time webhook token checks.
 - Safe record ID and raw-payload path handling.
 - Optional HTTPS for explicitly non-local dashboard deployments.
 - Explicit stable dashboard token required for non-local dashboard deployments.
 - Compact item index dedupe path for fast repeated no-op syncs.
+- Compact sorted indexes for warm dashboard item, action, and learning reads.
 - Default policy blocks direct `send_response`.
 
-Before calling it enterprise-ready for a team or customer deployment, validate the roadmap in [docs/production-readiness-roadmap.md](docs/production-readiness-roadmap.md).
+Before calling it enterprise-ready for a team or customer deployment, validate the roadmap in [docs/production-readiness-roadmap.md](docs/production-readiness-roadmap.md) and the newest review list in [docs/intake-next-enterprise-readiness-review-2026-06-19.md](docs/intake-next-enterprise-readiness-review-2026-06-19.md).
 
 ## Install
 
@@ -107,7 +109,7 @@ Start the dashboard:
 intake dashboard --port 8787
 ```
 
-The dashboard binds to `127.0.0.1`, prints a tokenized local URL, and uses the same `.intake/` storage, policy, action, learning, and audit-log workflow as the CLI. Set `INTAKE_DASHBOARD_TOKEN` or pass `--token` if you want a stable local token. Non-local dashboard binding requires `--allow-non-local`, TLS cert/key options, and an explicit token with at least 20 characters.
+The dashboard binds to `127.0.0.1`, prints a tokenized local URL, captures that launch token into session storage, removes it from the browser URL, and uses the same `.intake/` storage, policy, action, learning, and audit-log workflow as the CLI. Set `INTAKE_DASHBOARD_TOKEN` or pass `--token` if you want a stable local token. Non-local dashboard binding requires `--allow-non-local`, TLS cert/key options, and an explicit token with at least 20 characters.
 
 The dashboard includes:
 
@@ -270,6 +272,7 @@ Policy and safety docs:
 - [Restore drill](docs/restore-drill.md)
 - [Example packs](docs/example-packs.md)
 - [Next production readiness sweep](docs/next-production-readiness-sweep.md)
+- [Next enterprise readiness review](docs/intake-next-enterprise-readiness-review-2026-06-19.md)
 
 ## Storage
 

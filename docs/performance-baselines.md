@@ -56,4 +56,5 @@ npm run bench -- --items 100 --logs 100000 --fileRows 0 --actions 0 --learnings 
 - The 10,000-item index read includes first-read index rebuild cost in this benchmark shape because benchmark item insertion intentionally bypasses incremental index updates.
 - File sync timing includes raw payload storage, item normalization, classification, audit logging, and final index rebuild for newly saved items.
 - Warm dashboard item, action, learning, summary, and approval-audit reads use compact indexes and now stay below 125 ms in these local baseline runs.
+- Warm item, action, and learning index reads preserve write-time sort order instead of re-sorting every request; keep rebuild and upsert paths sorted when changing index storage.
 - The 100,000 audit-log write baseline remains intentionally separate because it measures append-only log throughput rather than dashboard read latency.
