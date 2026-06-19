@@ -138,7 +138,7 @@ export async function listItemIndex(root, filters = {}) {
     await rebuildItemIndex(root);
     return listItemIndex(root, filters);
   }
-  return paginateRows(rows.filter((row) => matchesFilters(row, filters)).sort(sortItems), filters);
+  return paginateRows(rows.filter((row) => matchesFilters(row, filters)), filters);
 }
 
 export async function listItemDedupeKeys(root) {
@@ -232,7 +232,7 @@ async function listRecordIndex(root, collection, filters, rebuild) {
     await rebuild(root);
     return listRecordIndex(root, collection, filters, rebuild);
   }
-  return paginateRows(rows.filter((row) => matchesFilters(row, filters)).sort(sortRecords), filters);
+  return paginateRows(rows.filter((row) => matchesFilters(row, filters)), filters);
 }
 
 function matchesFilters(row, filters) {

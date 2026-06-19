@@ -914,8 +914,13 @@ function dashboardHtml() {
   <script>
     const ICONS = ${JSON.stringify(ICONS)};
     const AI_PROVIDER_PRESETS = ${JSON.stringify(AI_PROVIDER_PRESETS)};
-    const tokenFromUrl = new URL(location.href).searchParams.get("token");
-    if (tokenFromUrl) sessionStorage.setItem("intakeToken", tokenFromUrl);
+    const launchUrl = new URL(location.href);
+    const tokenFromUrl = launchUrl.searchParams.get("token");
+    if (tokenFromUrl) {
+      sessionStorage.setItem("intakeToken", tokenFromUrl);
+      launchUrl.searchParams.delete("token");
+      history.replaceState(null, "", launchUrl.pathname + launchUrl.search + launchUrl.hash);
+    }
     const token = sessionStorage.getItem("intakeToken") || "";
     const state = { items: [], itemOffset: 0, itemPageSize: 20, itemsHasMore: false, itemsLoading: false, sources: [], summary: null, selectedQueue: "", sidebarFilter: "", selectedItemIds: new Set(), selectedItemId: null, selectedSourceId: "", selectedRuleId: "", selectedItem: null, selectedView: "items", sourceDiagnostics: {}, pendingSourceAction: "", policyPreview: null, setupProfile: "email", approvalAuditFilters: { operator: "", action_type: "", source_id: "", status: "", date_from: "", date_to: "" } };
     const qs = (s) => document.querySelector(s);

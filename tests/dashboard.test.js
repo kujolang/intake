@@ -545,6 +545,8 @@ test("dashboard HTML keeps icon controls accessible", async () => {
     assert.match(html, /aria-label="Refresh"/);
     assert.match(html, /data-view="settings"/);
     assert.match(html, /id="logSelect"/);
+    assert.match(html, /launchUrl\.searchParams\.delete\("token"\)/);
+    assert.match(html, /history\.replaceState\(null, "", launchUrl\.pathname \+ launchUrl\.search \+ launchUrl\.hash\)/);
     assert.match(html, /First source setup/);
     assert.match(html, /Source setup checklist/);
     assert.match(html, /INTAKE_GITHUB_API_TOKEN/);
