@@ -1,5 +1,9 @@
 # Kujo Intake
 
+[![Version](https://img.shields.io/badge/version-1.0.0-black)](https://github.com/kujolang/intake)
+[![License](https://img.shields.io/badge/license-MIT-lightgrey)](LICENSE)
+[![built with Kujo](https://img.shields.io/badge/built%20with-Kujo-white.svg)](https://github.com/kujolang/kujo)
+
 Kujo Intake turns inbound business noise into agent-readable work.
 
 It is a local-first intake layer for email, webhooks, local file drops, and manual operator input. Intake normalizes every source into a durable `IntakeItem`, applies deterministic rules and safety checks, proposes actions, requires approval where policy says it must, and exports reviewed learnings to Strata and TotalRecall-compatible files.
