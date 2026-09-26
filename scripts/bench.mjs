@@ -109,6 +109,7 @@ async function measureDashboard(root) {
     await fetchJson(`${base}/api/learnings?limit=100`, headers);
     await fetchJson(`${base}/api/approval-audit`, headers);
     return [
+      await measure("dashboard_logs_page_200_warm", async () => fetchJson(`${base}/api/logs?limit=200`, headers)),
       await measure("dashboard_summary_warm", async () => fetchJson(`${base}/api/summary`, headers)),
       await measure("dashboard_items_page_100_warm", async () => fetchJson(`${base}/api/items?limit=100`, headers)),
       await measure("dashboard_actions_page_100_warm", async () => fetchJson(`${base}/api/actions?limit=100`, headers)),

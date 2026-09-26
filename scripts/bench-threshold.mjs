@@ -10,6 +10,7 @@ const benchArgs = [
   "--learnings", flags.learnings || "500"
 ];
 const thresholds = {
+  dashboard_logs_page_200_warm: positiveNumber(flags.dashboardLogsMs ?? 1000, "dashboardLogsMs"),
   dashboard_summary_warm: positiveNumber(flags.dashboardSummaryMs ?? 1500, "dashboardSummaryMs"),
   dashboard_items_page_100_warm: positiveNumber(flags.dashboardItemsMs ?? 1000, "dashboardItemsMs"),
   dashboard_actions_page_100_warm: positiveNumber(flags.dashboardActionsMs ?? 1000, "dashboardActionsMs"),
