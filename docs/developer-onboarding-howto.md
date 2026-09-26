@@ -6,7 +6,7 @@ This guide is for developers joining the Intake codebase. It covers the local se
 
 Install:
 
-- Node.js 18 or newer.
+- Node.js 20.19.0 or newer.
 - npm.
 - Git.
 - Optional: macOS Keychain CLI (`security`) if you are testing local encrypted secret references.

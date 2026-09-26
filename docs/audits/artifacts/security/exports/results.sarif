@@ -1,0 +1,740 @@
+{
+  "$schema": "https://docs.oasis-open.org/sarif/sarif/v2.1.0/os/schemas/sarif-schema-2.1.0.json",
+  "runs": [
+    {
+      "automationDetails": {
+        "id": "intake-hardening-20260926"
+      },
+      "properties": {
+        "codexSecuritySchemaVersion": "1.0",
+        "codexSecurityTargetKind": "git_revision"
+      },
+      "results": [
+        {
+          "level": "warning",
+          "locations": [
+            {
+              "message": {
+                "text": "root_control"
+              },
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "src/policy.js"
+                },
+                "region": {
+                  "endLine": 33,
+                  "startLine": 13
+                }
+              }
+            },
+            {
+              "message": {
+                "text": "sink"
+              },
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "src/workflow.js"
+                },
+                "region": {
+                  "endLine": 247,
+                  "startLine": 201
+                }
+              }
+            }
+          ],
+          "message": {
+            "text": "Auto-execution bypasses human-review requirements and rejected decisions\n\nPolicy computes requiresHumanReview but does not include its negation in auto_execute_allowed. runAction accepts any non-executed status when auto allowance is true, including rejected. High/critical items also become eligible when the configured ceiling permits them.\n\nSeverity: medium\n\nCategory: Authorization\n\nWeaknesses: CWE-863\n\nRemediation:\nRequire absence of all human-review conditions for automatic execution; make rejection terminal and enforce lifecycle transitions. Preserve explicit human approval for otherwise allowed actions."
+          },
+          "partialFingerprints": {
+            "codexSecurity/v1": "codex-security/v1:sha256:29c39b1599c57482bc303e8cd9d58c7ff41ba3a4fea52f97d058eec9acd1da3c",
+            "primaryLocationLineHash": "e77650b2c308336a:1"
+          },
+          "properties": {
+            "category": "authorization",
+            "confidence": "high",
+            "findingId": "csf_8b893fc34488ae6d45587754",
+            "occurrenceId": "occ_1301499cf50fab1eaead6ba1",
+            "severity": "medium"
+          },
+          "ruleId": "intake.sec-01",
+          "ruleIndex": 0
+        },
+        {
+          "level": "warning",
+          "locations": [
+            {
+              "message": {
+                "text": "root_control"
+              },
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "src/source-config.js"
+                },
+                "region": {
+                  "endLine": 88,
+                  "startLine": 83
+                }
+              }
+            },
+            {
+              "message": {
+                "text": "sink"
+              },
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "src/adapters/slack.js"
+                },
+                "region": {
+                  "endLine": 62,
+                  "startLine": 62
+                }
+              }
+            },
+            {
+              "message": {
+                "text": "sink"
+              },
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "src/cli.js"
+                },
+                "region": {
+                  "endLine": 241,
+                  "startLine": 235
+                }
+              }
+            },
+            {
+              "message": {
+                "text": "sink"
+              },
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "src/backup.js"
+                },
+                "region": {
+                  "endLine": 115,
+                  "startLine": 94
+                }
+              }
+            },
+            {
+              "message": {
+                "text": "evidence:sec-05-1"
+              },
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "src/adapters/slack.js"
+                },
+                "region": {
+                  "endLine": 66,
+                  "startLine": 58
+                }
+              }
+            }
+          ],
+          "message": {
+            "text": "Secret-free output omits supported inline secret fields\n\nsanitizeSource masks token/api_token but not supported config.signing_secret. Default backup exclusions skip .env and secrets directories but copy sources.json verbatim, including supported inline token, api_token and signing_secret.\n\nSeverity: medium\n\nCategory: Data integrity\n\nWeaknesses: CWE-200\n\nRemediation:\nSanitize all supported inline credential fields in source output and secret-excluding backups, leaving reference fields intact; test preservation under explicit includeSecrets."
+          },
+          "partialFingerprints": {
+            "codexSecurity/v1": "codex-security/v1:sha256:bd79c628004afa3b5dbd548b55f816cd0ea4c7817b766e3beec80dba172078e2",
+            "primaryLocationLineHash": "4e37bb09bb236543:1"
+          },
+          "properties": {
+            "category": "data-integrity",
+            "confidence": "high",
+            "findingId": "csf_6402bd70cbff55cc0405b04a",
+            "occurrenceId": "occ_36877cb31a8b5a154cf2d947",
+            "severity": "medium"
+          },
+          "ruleId": "intake.sec-05",
+          "ruleIndex": 4
+        },
+        {
+          "level": "warning",
+          "locations": [
+            {
+              "message": {
+                "text": "root_control"
+              },
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "src/rules.js"
+                },
+                "region": {
+                  "endLine": 42,
+                  "startLine": 6
+                }
+              }
+            },
+            {
+              "message": {
+                "text": "sink"
+              },
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "src/policy.js"
+                },
+                "region": {
+                  "endLine": 33,
+                  "startLine": 3
+                }
+              }
+            },
+            {
+              "message": {
+                "text": "sink"
+              },
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "src/storage.js"
+                },
+                "region": {
+                  "endLine": 475,
+                  "startLine": 473
+                }
+              }
+            }
+          ],
+          "message": {
+            "text": "Rule action blocks and policy confidence thresholds are descriptive only\n\napplyRules ignores blocked_actions entirely. evaluatePolicy reads only policy-level blocked_actions and never reads confidence_threshold. Defaults and documentation advertise these controls.\n\nSeverity: medium\n\nCategory: Authorization\n\nWeaknesses: CWE-863\n\nRemediation:\nCarry trusted matched-rule blocks into policy evaluation, including auto_execute, and enforce finite confidence thresholds for automatic execution."
+          },
+          "partialFingerprints": {
+            "codexSecurity/v1": "codex-security/v1:sha256:9e1870d3a26583ff8e4c0e7c108367c780765a62d0ddf23c3c4c808c2395d3f1",
+            "primaryLocationLineHash": "6f2af0b073dfed5a:1"
+          },
+          "properties": {
+            "category": "authorization",
+            "confidence": "high",
+            "findingId": "csf_35a78a952e52dc88a9197059",
+            "occurrenceId": "occ_38fdba2a3e4c430efb94d89c",
+            "severity": "medium"
+          },
+          "ruleId": "intake.sec-02",
+          "ruleIndex": 1
+        },
+        {
+          "level": "warning",
+          "locations": [
+            {
+              "message": {
+                "text": "root_control"
+              },
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "src/ai.js"
+                },
+                "region": {
+                  "endLine": 77,
+                  "startLine": 70
+                }
+              }
+            },
+            {
+              "message": {
+                "text": "sink"
+              },
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "src/ai.js"
+                },
+                "region": {
+                  "endLine": 144,
+                  "startLine": 134
+                }
+              }
+            }
+          ],
+          "message": {
+            "text": "Insecure-localhost URL exception accepts external hosts\n\nstartsWith('http://localhost') and startsWith('http://127.0.0.1') accept external suffix hosts such as localhost.attacker.example; fetch sends the selected API key as a bearer credential.\n\nSeverity: medium\n\nCategory: Data integrity\n\nWeaknesses: CWE-295\n\nRemediation:\nParse URL and compare exact normalized hostname, protocol, username/password, query and fragment; use the parsed normalized value consistently."
+          },
+          "partialFingerprints": {
+            "codexSecurity/v1": "codex-security/v1:sha256:0c5c9e8efc87b40660ea81618c88d0bcce6e2a7f1f9591086841bcd11098e88e",
+            "primaryLocationLineHash": "bd62e22a1bc8e29c:1"
+          },
+          "properties": {
+            "category": "data-integrity",
+            "confidence": "high",
+            "findingId": "csf_b3cd505b73c71a0e00abb77b",
+            "occurrenceId": "occ_5c6f187d4225f7740d039bcf",
+            "severity": "medium"
+          },
+          "ruleId": "intake.sec-04",
+          "ruleIndex": 3
+        },
+        {
+          "level": "warning",
+          "locations": [
+            {
+              "message": {
+                "text": "root_control"
+              },
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "src/cli.js"
+                },
+                "region": {
+                  "endLine": 509,
+                  "startLine": 495
+                }
+              }
+            },
+            {
+              "message": {
+                "text": "sink"
+              },
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "src/rules.js"
+                },
+                "region": {
+                  "endLine": 12,
+                  "startLine": 10
+                }
+              }
+            },
+            {
+              "message": {
+                "text": "sink"
+              },
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "src/rules.js"
+                },
+                "region": {
+                  "endLine": 81,
+                  "startLine": 55
+                }
+              }
+            }
+          ],
+          "message": {
+            "text": "Proposed rules are active before approval\n\nrules propose saves a rule with status proposed; applyRules iterates it without checking status. The separate rules approve command has no effect on eligibility.\n\nSeverity: medium\n\nCategory: Authorization\n\nWeaknesses: CWE-863\n\nRemediation:\nSkip explicitly nonapproved rules while preserving existing legacy rules with no status."
+          },
+          "partialFingerprints": {
+            "codexSecurity/v1": "codex-security/v1:sha256:f9464b3babf2610115b20cbe677663d7801d9beea25280c922c2d0effef246ab",
+            "primaryLocationLineHash": "d3dcf5d56ef3a730:1"
+          },
+          "properties": {
+            "category": "authorization",
+            "confidence": "high",
+            "findingId": "csf_e88ff88c0df7ddffcd1cc92e",
+            "occurrenceId": "occ_820ef6f024f95cff89943985",
+            "severity": "medium"
+          },
+          "ruleId": "intake.sec-06",
+          "ruleIndex": 5
+        },
+        {
+          "level": "warning",
+          "locations": [
+            {
+              "message": {
+                "text": "root_control"
+              },
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "src/backup.js"
+                },
+                "region": {
+                  "endLine": 67,
+                  "startLine": 54
+                }
+              }
+            },
+            {
+              "message": {
+                "text": "sink"
+              },
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "src/backup.js"
+                },
+                "region": {
+                  "endLine": 136,
+                  "startLine": 119
+                }
+              }
+            },
+            {
+              "message": {
+                "text": "sink"
+              },
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "src/backup.js"
+                },
+                "region": {
+                  "endLine": 221,
+                  "startLine": 207
+                }
+              }
+            }
+          ],
+          "message": {
+            "text": "Restore verifies a different read from the archive it consumes and mutates before complete validation\n\nrestoreBackup verifies one decompression then decompresses again without validating that second object. Validation also accepts '.' and duplicate or file/parent-conflicting paths when their content checksums match. With force, target is deleted before extraction discovers such conflicts. Decompressed bytes are unbounded.\n\nSeverity: medium\n\nCategory: Data integrity\n\nWeaknesses: CWE-367\n\nRemediation:\nRead once with a decompressed-byte bound, validate strict entry shape and canonical unique nonconflicting file paths, stage the full store before replacement, then restore exactly the validated bytes."
+          },
+          "partialFingerprints": {
+            "codexSecurity/v1": "codex-security/v1:sha256:23c00bc303549f17ab73da4d0b1d5ac1e03135931f9b5c2c3a28692df735b3d6",
+            "primaryLocationLineHash": "37baea43ff2f2556:1"
+          },
+          "properties": {
+            "category": "data-integrity",
+            "confidence": "high",
+            "findingId": "csf_df99eca10f8103830a7fa6a5",
+            "occurrenceId": "occ_93bbe81d356efcb65f1b0550",
+            "severity": "medium"
+          },
+          "ruleId": "intake.sec-07",
+          "ruleIndex": 6
+        },
+        {
+          "level": "warning",
+          "locations": [
+            {
+              "message": {
+                "text": "root_control"
+              },
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "src/policy.js"
+                },
+                "region": {
+                  "endLine": 4,
+                  "startLine": 4
+                }
+              }
+            }
+          ],
+          "message": {
+            "text": "Nonmatching policies silently authorize through first-policy fallback\n\nA failed policies.find falls back to policies[0], even when that policy explicitly scopes itself to a different source/category.\n\nSeverity: medium\n\nCategory: Authorization\n\nWeaknesses: CWE-863\n\nRemediation:\nReturn a blocked result when no policy applies; preserve explicit wildcard behavior."
+          },
+          "partialFingerprints": {
+            "codexSecurity/v1": "codex-security/v1:sha256:89d5fc8017d60c8d8d3c4251b2f37f1683c96773de138056166a6ccba64e3561",
+            "primaryLocationLineHash": "daaa892abc2cb577:1"
+          },
+          "properties": {
+            "category": "authorization",
+            "confidence": "high",
+            "findingId": "csf_f5983195af8c2aa0a752a699",
+            "occurrenceId": "occ_be5093c86194cbdeb2cf5675",
+            "severity": "medium"
+          },
+          "ruleId": "intake.sec-03",
+          "ruleIndex": 2
+        },
+        {
+          "level": "warning",
+          "locations": [
+            {
+              "message": {
+                "text": "root_control"
+              },
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "src/workflow.js"
+                },
+                "region": {
+                  "endLine": 276,
+                  "startLine": 201
+                }
+              }
+            },
+            {
+              "message": {
+                "text": "sink"
+              },
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "src/dashboard.js"
+                },
+                "region": {
+                  "endLine": 315,
+                  "startLine": 312
+                }
+              }
+            },
+            {
+              "message": {
+                "text": "sink"
+              },
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "src/policy.js"
+                },
+                "region": {
+                  "endLine": 96,
+                  "startLine": 46
+                }
+              }
+            }
+          ],
+          "message": {
+            "text": "Concurrent action runs can duplicate outbound side effects\n\nEach run reads status, performs external execution, and only then saves executed. Two concurrent requests can both read approved and send/comment. Automatic budget counters use read-modify-write after execution and can similarly overrun caps.\n\nSeverity: medium\n\nCategory: Data integrity\n\nWeaknesses: CWE-362\n\nRemediation:\nSerialize execution and budget reservations per store across supported processes, re-read status under lock, and explicitly handle crash ambiguity without claiming exactly-once network delivery."
+          },
+          "partialFingerprints": {
+            "codexSecurity/v1": "codex-security/v1:sha256:8c032256d230fb10e082067adf99ab986f8ff74ef982f45b8a9c84328fb3a52d",
+            "primaryLocationLineHash": "aa079dbef9729c90:1"
+          },
+          "properties": {
+            "category": "data-integrity",
+            "confidence": "high",
+            "findingId": "csf_3a93d0493cfd0b5acf141184",
+            "occurrenceId": "occ_e3e4859b3965902f8ad61374",
+            "severity": "medium"
+          },
+          "ruleId": "intake.sec-08",
+          "ruleIndex": 7
+        },
+        {
+          "level": "warning",
+          "locations": [
+            {
+              "message": {
+                "text": "root_control"
+              },
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "src/adapters/file.js"
+                },
+                "region": {
+                  "endLine": 38,
+                  "startLine": 17
+                }
+              }
+            }
+          ],
+          "message": {
+            "text": "File-drop symlinks cross the inbound filesystem boundary\n\nsyncFileSource uses stat, which follows symlinks, then readFile. A drop-folder entry named with a supported extension can point outside the folder and be imported as inbound content.\n\nSeverity: medium\n\nCategory: Data integrity\n\nWeaknesses: CWE-59\n\nRemediation:\nReject symlink entries and use no-follow file handles with regular-file checks; bound file size before buffering."
+          },
+          "partialFingerprints": {
+            "codexSecurity/v1": "codex-security/v1:sha256:c8630657bd31a2fdeeb3398447ac91340ee733a0620221ce5dbf64b1f9f984cc",
+            "primaryLocationLineHash": "b65a74fc267c6c79:1"
+          },
+          "properties": {
+            "category": "data-integrity",
+            "confidence": "high",
+            "findingId": "csf_077aa9a93eeb0ad8641c6d0b",
+            "occurrenceId": "occ_f7b94796e19e78675b20829a",
+            "severity": "medium"
+          },
+          "ruleId": "intake.sec-09",
+          "ruleIndex": 8
+        }
+      ],
+      "tool": {
+        "driver": {
+          "name": "Codex Security",
+          "rules": [
+            {
+              "fullDescription": {
+                "text": "Intake: Sec 01. Categories: Authorization. Weaknesses: CWE-863."
+              },
+              "help": {
+                "markdown": "Intake: Sec 01. Categories: Authorization. Weaknesses: CWE-863.\n\n## Remediation\n\nRequire absence of all human-review conditions for automatic execution; make rejection terminal and enforce lifecycle transitions. Preserve explicit human approval for otherwise allowed actions.",
+                "text": "Intake: Sec 01. Categories: Authorization. Weaknesses: CWE-863.\n\nRemediation:\n\nRequire absence of all human-review conditions for automatic execution; make rejection terminal and enforce lifecycle transitions. Preserve explicit human approval for otherwise allowed actions."
+              },
+              "id": "intake.sec-01",
+              "name": "Intake: Sec 01",
+              "properties": {
+                "security-severity": "5.0",
+                "tags": [
+                  "authorization",
+                  "external/cwe/cwe-863",
+                  "security"
+                ]
+              },
+              "shortDescription": {
+                "text": "Intake: Sec 01"
+              }
+            },
+            {
+              "fullDescription": {
+                "text": "Intake: Sec 02. Categories: Authorization. Weaknesses: CWE-863."
+              },
+              "help": {
+                "markdown": "Intake: Sec 02. Categories: Authorization. Weaknesses: CWE-863.\n\n## Remediation\n\nCarry trusted matched-rule blocks into policy evaluation, including auto_execute, and enforce finite confidence thresholds for automatic execution.",
+                "text": "Intake: Sec 02. Categories: Authorization. Weaknesses: CWE-863.\n\nRemediation:\n\nCarry trusted matched-rule blocks into policy evaluation, including auto_execute, and enforce finite confidence thresholds for automatic execution."
+              },
+              "id": "intake.sec-02",
+              "name": "Intake: Sec 02",
+              "properties": {
+                "security-severity": "5.0",
+                "tags": [
+                  "authorization",
+                  "external/cwe/cwe-863",
+                  "security"
+                ]
+              },
+              "shortDescription": {
+                "text": "Intake: Sec 02"
+              }
+            },
+            {
+              "fullDescription": {
+                "text": "Intake: Sec 03. Categories: Authorization. Weaknesses: CWE-863."
+              },
+              "help": {
+                "markdown": "Intake: Sec 03. Categories: Authorization. Weaknesses: CWE-863.\n\n## Remediation\n\nReturn a blocked result when no policy applies; preserve explicit wildcard behavior.",
+                "text": "Intake: Sec 03. Categories: Authorization. Weaknesses: CWE-863.\n\nRemediation:\n\nReturn a blocked result when no policy applies; preserve explicit wildcard behavior."
+              },
+              "id": "intake.sec-03",
+              "name": "Intake: Sec 03",
+              "properties": {
+                "security-severity": "5.0",
+                "tags": [
+                  "authorization",
+                  "external/cwe/cwe-863",
+                  "security"
+                ]
+              },
+              "shortDescription": {
+                "text": "Intake: Sec 03"
+              }
+            },
+            {
+              "fullDescription": {
+                "text": "Intake: Sec 04. Categories: Data integrity. Weaknesses: CWE-295."
+              },
+              "help": {
+                "markdown": "Intake: Sec 04. Categories: Data integrity. Weaknesses: CWE-295.\n\n## Remediation\n\nParse URL and compare exact normalized hostname, protocol, username/password, query and fragment; use the parsed normalized value consistently.",
+                "text": "Intake: Sec 04. Categories: Data integrity. Weaknesses: CWE-295.\n\nRemediation:\n\nParse URL and compare exact normalized hostname, protocol, username/password, query and fragment; use the parsed normalized value consistently."
+              },
+              "id": "intake.sec-04",
+              "name": "Intake: Sec 04",
+              "properties": {
+                "security-severity": "5.0",
+                "tags": [
+                  "data-integrity",
+                  "external/cwe/cwe-295",
+                  "security"
+                ]
+              },
+              "shortDescription": {
+                "text": "Intake: Sec 04"
+              }
+            },
+            {
+              "fullDescription": {
+                "text": "Intake: Sec 05. Categories: Data integrity. Weaknesses: CWE-200."
+              },
+              "help": {
+                "markdown": "Intake: Sec 05. Categories: Data integrity. Weaknesses: CWE-200.\n\n## Remediation\n\nSanitize all supported inline credential fields in source output and secret-excluding backups, leaving reference fields intact; test preservation under explicit includeSecrets.",
+                "text": "Intake: Sec 05. Categories: Data integrity. Weaknesses: CWE-200.\n\nRemediation:\n\nSanitize all supported inline credential fields in source output and secret-excluding backups, leaving reference fields intact; test preservation under explicit includeSecrets."
+              },
+              "id": "intake.sec-05",
+              "name": "Intake: Sec 05",
+              "properties": {
+                "security-severity": "5.0",
+                "tags": [
+                  "data-integrity",
+                  "external/cwe/cwe-200",
+                  "security"
+                ]
+              },
+              "shortDescription": {
+                "text": "Intake: Sec 05"
+              }
+            },
+            {
+              "fullDescription": {
+                "text": "Intake: Sec 06. Categories: Authorization. Weaknesses: CWE-863."
+              },
+              "help": {
+                "markdown": "Intake: Sec 06. Categories: Authorization. Weaknesses: CWE-863.\n\n## Remediation\n\nSkip explicitly nonapproved rules while preserving existing legacy rules with no status.",
+                "text": "Intake: Sec 06. Categories: Authorization. Weaknesses: CWE-863.\n\nRemediation:\n\nSkip explicitly nonapproved rules while preserving existing legacy rules with no status."
+              },
+              "id": "intake.sec-06",
+              "name": "Intake: Sec 06",
+              "properties": {
+                "security-severity": "5.0",
+                "tags": [
+                  "authorization",
+                  "external/cwe/cwe-863",
+                  "security"
+                ]
+              },
+              "shortDescription": {
+                "text": "Intake: Sec 06"
+              }
+            },
+            {
+              "fullDescription": {
+                "text": "Intake: Sec 07. Categories: Data integrity. Weaknesses: CWE-367."
+              },
+              "help": {
+                "markdown": "Intake: Sec 07. Categories: Data integrity. Weaknesses: CWE-367.\n\n## Remediation\n\nRead once with a decompressed-byte bound, validate strict entry shape and canonical unique nonconflicting file paths, stage the full store before replacement, then restore exactly the validated bytes.",
+                "text": "Intake: Sec 07. Categories: Data integrity. Weaknesses: CWE-367.\n\nRemediation:\n\nRead once with a decompressed-byte bound, validate strict entry shape and canonical unique nonconflicting file paths, stage the full store before replacement, then restore exactly the validated bytes."
+              },
+              "id": "intake.sec-07",
+              "name": "Intake: Sec 07",
+              "properties": {
+                "security-severity": "5.0",
+                "tags": [
+                  "data-integrity",
+                  "external/cwe/cwe-367",
+                  "security"
+                ]
+              },
+              "shortDescription": {
+                "text": "Intake: Sec 07"
+              }
+            },
+            {
+              "fullDescription": {
+                "text": "Intake: Sec 08. Categories: Data integrity. Weaknesses: CWE-362."
+              },
+              "help": {
+                "markdown": "Intake: Sec 08. Categories: Data integrity. Weaknesses: CWE-362.\n\n## Remediation\n\nSerialize execution and budget reservations per store across supported processes, re-read status under lock, and explicitly handle crash ambiguity without claiming exactly-once network delivery.",
+                "text": "Intake: Sec 08. Categories: Data integrity. Weaknesses: CWE-362.\n\nRemediation:\n\nSerialize execution and budget reservations per store across supported processes, re-read status under lock, and explicitly handle crash ambiguity without claiming exactly-once network delivery."
+              },
+              "id": "intake.sec-08",
+              "name": "Intake: Sec 08",
+              "properties": {
+                "security-severity": "5.0",
+                "tags": [
+                  "data-integrity",
+                  "external/cwe/cwe-362",
+                  "security"
+                ]
+              },
+              "shortDescription": {
+                "text": "Intake: Sec 08"
+              }
+            },
+            {
+              "fullDescription": {
+                "text": "Intake: Sec 09. Categories: Data integrity. Weaknesses: CWE-59."
+              },
+              "help": {
+                "markdown": "Intake: Sec 09. Categories: Data integrity. Weaknesses: CWE-59.\n\n## Remediation\n\nReject symlink entries and use no-follow file handles with regular-file checks; bound file size before buffering.",
+                "text": "Intake: Sec 09. Categories: Data integrity. Weaknesses: CWE-59.\n\nRemediation:\n\nReject symlink entries and use no-follow file handles with regular-file checks; bound file size before buffering."
+              },
+              "id": "intake.sec-09",
+              "name": "Intake: Sec 09",
+              "properties": {
+                "security-severity": "5.0",
+                "tags": [
+                  "data-integrity",
+                  "external/cwe/cwe-059",
+                  "security"
+                ]
+              },
+              "shortDescription": {
+                "text": "Intake: Sec 09"
+              }
+            }
+          ],
+          "version": "0.1.31"
+        }
+      },
+      "versionControlProvenance": [
+        {
+          "repositoryUri": "https://github.com/kujolang/intake",
+          "revisionId": "e2140681bfef3ed02f1d09812c13c6ecd908d2df"
+        }
+      ]
+    }
+  ],
+  "version": "2.1.0"
+}

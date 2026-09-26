@@ -1,0 +1,43 @@
+{
+  "completeness": "complete",
+  "deferred": [],
+  "documentType": "codex-security.coverage",
+  "excludePaths": [
+    "node_modules",
+    ".intake"
+  ],
+  "explicitExclusions": [
+    {
+      "pattern": "node_modules",
+      "reason": "Dependency source not audited; npm audit and lockfile review performed."
+    },
+    {
+      "pattern": ".intake",
+      "reason": "Live business state and credentials excluded."
+    }
+  ],
+  "includePaths": [
+    "."
+  ],
+  "inventoryStrategy": "repository",
+  "mode": "repository",
+  "openQuestions": [
+    {
+      "question": "General multi-process store transactions and retention versus append concurrency remain unsupported; use one writer and quiesce maintenance."
+    },
+    {
+      "question": "Live PrivateEmail/Slack and provider outages were not tested with real credentials."
+    }
+  ],
+  "scanId": "intake-hardening-20260926",
+  "schemaVersion": "1.0",
+  "surfaces": [
+    {
+      "disposition": "reported",
+      "id": "intake-runtime",
+      "label": "CLI, dashboard, adapters, policy, state and backup boundaries",
+      "notes": "All runtime source files reviewed independently. Findings describe baseline and are remediated; current regression receipts in ../final-verify.log. Runtime dependencies assessed through npm audit rather than vendored source review.",
+      "receiptRefs": []
+    }
+  ]
+}

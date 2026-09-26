@@ -29,3 +29,10 @@ A source can define `config.allowed_actions` to narrow what the source may execu
 ## Auto-Action Counters
 
 When an action executes through auto-action allowance, Intake records hourly and daily action counters in settings. These counters are evaluated against policy rate caps before future auto-actions can execute.
+
+
+Automatic execution honors `requires_human_review`, persistent item review requirements, rule `blocked_actions` (including `auto_execute`), confidence thresholds and risk ceilings. Empty or nonmatching policies deny actions instead of falling back to an unrelated policy. Explicit approval may satisfy a review requirement but cannot override an action veto. Proposed/rejected rules are inactive; legacy rules without a status remain active.
+
+Source synchronization snapshots rules/settings once per batch, applying a consistent policy configuration and avoiding repeated reads for every item. Manual classification reads the current configuration.
+
+Action attempts reserve automatic budgets before invoking adapters. Uncertain attempts retain their reservation; operators must reconcile effects before an explicit retry approval. Editing an approved action body or type invalidates the previous approval.

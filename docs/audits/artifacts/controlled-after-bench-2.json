@@ -1,0 +1,62 @@
+{
+  "root": "/var/folders/wb/0cck3lgd08n55g_8ly9qmf_00000gn/T/intake-bench-GIMXlz",
+  "items": 500,
+  "logs": 1000,
+  "fileRows": 250,
+  "actions": 500,
+  "learnings": 500,
+  "timings_ms": [
+    {
+      "name": "insert_500_items",
+      "ms": 4276
+    },
+    {
+      "name": "read_index_page_100",
+      "ms": 300
+    },
+    {
+      "name": "insert_500_actions",
+      "ms": 2036
+    },
+    {
+      "name": "insert_500_learnings",
+      "ms": 2417
+    },
+    {
+      "name": "write_1000_audit_logs",
+      "ms": 1392
+    },
+    {
+      "name": "sync_250_file_rows",
+      "ms": 2518
+    },
+    {
+      "name": "sync_repeated_dedupe",
+      "ms": 36
+    },
+    {
+      "name": "dashboard_logs_page_200_warm",
+      "ms": 10
+    },
+    {
+      "name": "dashboard_summary_warm",
+      "ms": 12
+    },
+    {
+      "name": "dashboard_items_page_100_warm",
+      "ms": 9
+    },
+    {
+      "name": "dashboard_actions_page_100_warm",
+      "ms": 65
+    },
+    {
+      "name": "dashboard_learnings_page_100_warm",
+      "ms": 50
+    },
+    {
+      "name": "dashboard_approval_audit_warm",
+      "ms": 91
+    }
+  ]
+}

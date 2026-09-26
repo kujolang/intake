@@ -1,0 +1,64 @@
+{
+  "implementation_sha": "4f1e60d337a87e581b7743f4a8473b372499a20f",
+  "host_node": "26.7.0",
+  "minimum_node": "20.19.0",
+  "checks": [
+    {
+      "command": "npm ci",
+      "result": "pass; baseline advisories recorded",
+      "local_log": "npm-ci.log",
+      "sha256": "80f1e002473f82189697f3599a61c43328b6f2363fbc9713f320d2384bc3a611",
+      "bytes": 379
+    },
+    {
+      "command": "npm run verify (baseline)",
+      "result": "fails audit: 7 advisories; other gates pass",
+      "local_log": "baseline-verify.log",
+      "sha256": "04ccafc9b89d0b8b38f3af14d00247e6cdb431e242eb82a0aae2b815676e5ad3",
+      "bytes": 10796
+    },
+    {
+      "command": "npm ci (final)",
+      "result": "pass; zero advisories",
+      "local_log": "final-install.log",
+      "sha256": "bc7d29b388113e7a34feea054df2e80fa219bfc2c1efd4c8b843e1b20e94595d",
+      "bytes": 289
+    },
+    {
+      "command": "npm run verify (final)",
+      "result": "pass; 91 tests,21 evaluations,smoke,lint,benchmark,audit",
+      "local_log": "final-verify.log",
+      "sha256": "776e098fff7d3eedfd603c47dcc34c94f2b522eec7234e2b704b1fc08541e01e",
+      "bytes": 10551
+    },
+    {
+      "command": "npm exec --yes --package=node@20.19.0 -- node --test tests/*.test.js",
+      "result": "pass; 91 tests",
+      "local_log": "node20-tests.log",
+      "sha256": "8d65a4831147a3ac23e26202816fee97baeeac3f31bce71db05efc89ac4f697b",
+      "bytes": 15829
+    },
+    {
+      "command": "INTAKE_DIR=TEMP_DIR npm run release:check",
+      "result": "pass; isolated store, all release checks",
+      "local_log": "release-check.log",
+      "sha256": "d0485fdcbecc655cd6782d39aeb111e5352d892223eb7b21a38438a6672fec62",
+      "bytes": 29433
+    },
+    {
+      "command": "baseline regression selection",
+      "result": "expected failure: 0 pass,11 fail",
+      "local_log": "baseline-regressions.log",
+      "sha256": "d2fb797e1b2d2d8ac81ff38e15fa037a1cf1efcb838bc5ce1eed35e8a176e793",
+      "bytes": 10272
+    }
+  ],
+  "browser": "not available: browser inventory empty",
+  "live_providers": "not exercised",
+  "signalbox": {
+    "capture_id": "cap_af2f3cfa-ba93-40b5-bfa7-7afc1b7026fc",
+    "signal_id": "sig_78602483-19b1-4717-b0da-5847312962fa",
+    "retrieval": "exact IDs and store-wide concept passed",
+    "duplicates_skipped": 0
+  }
+}

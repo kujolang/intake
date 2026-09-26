@@ -1,0 +1,58 @@
+{
+  "root": "/var/folders/wb/0cck3lgd08n55g_8ly9qmf_00000gn/T/intake-bench-1HAfl5",
+  "items": 500,
+  "logs": 1000,
+  "fileRows": 250,
+  "actions": 500,
+  "learnings": 500,
+  "timings_ms": [
+    {
+      "name": "insert_500_items",
+      "ms": 2248
+    },
+    {
+      "name": "read_index_page_100",
+      "ms": 351
+    },
+    {
+      "name": "insert_500_actions",
+      "ms": 1422
+    },
+    {
+      "name": "insert_500_learnings",
+      "ms": 1514
+    },
+    {
+      "name": "write_1000_audit_logs",
+      "ms": 972
+    },
+    {
+      "name": "sync_250_file_rows",
+      "ms": 2833
+    },
+    {
+      "name": "sync_repeated_dedupe",
+      "ms": 48
+    },
+    {
+      "name": "dashboard_summary_warm",
+      "ms": 12
+    },
+    {
+      "name": "dashboard_items_page_100_warm",
+      "ms": 13
+    },
+    {
+      "name": "dashboard_actions_page_100_warm",
+      "ms": 98
+    },
+    {
+      "name": "dashboard_learnings_page_100_warm",
+      "ms": 127
+    },
+    {
+      "name": "dashboard_approval_audit_warm",
+      "ms": 149
+    }
+  ]
+}

@@ -1,0 +1,31 @@
+{
+  "baseline": {
+    "insert_500_items": 2298,
+    "read_index_page_100": 393,
+    "insert_500_actions": 1511,
+    "insert_500_learnings": 1514,
+    "write_1000_audit_logs": 1218,
+    "sync_250_file_rows": 2833,
+    "sync_repeated_dedupe": 51,
+    "dashboard_summary_warm": 12,
+    "dashboard_items_page_100_warm": 9,
+    "dashboard_actions_page_100_warm": 100,
+    "dashboard_learnings_page_100_warm": 127,
+    "dashboard_approval_audit_warm": 129
+  },
+  "after": {
+    "insert_500_items": 4276,
+    "read_index_page_100": 321,
+    "insert_500_actions": 2036,
+    "insert_500_learnings": 1466,
+    "write_1000_audit_logs": 765,
+    "sync_250_file_rows": 2518,
+    "sync_repeated_dedupe": 38,
+    "dashboard_logs_page_200_warm": 18,
+    "dashboard_summary_warm": 14,
+    "dashboard_items_page_100_warm": 9,
+    "dashboard_actions_page_100_warm": 65,
+    "dashboard_learnings_page_100_warm": 68,
+    "dashboard_approval_audit_warm": 145
+  }
+}

@@ -1,0 +1,173 @@
+{
+  "threatModel": {
+    "summary": "Intake is a local-first Node.js operator application. bin/intake.js:2-6 loads dotenv files before CLI argument parsing; src/cli.js:59-103 dispatches initialization, sync/watch, dashboard, action approval/execution, configuration import/export, backups, retention and memory exports. Sources normalize external messages into JSON records, raw payloads and indexes, followed by rules, safety classification and optional AI (src/workflow.js:37-81,91-118). State root precedence is --dir, INTAKE_DIR, then cwd-relative .intake (src/storage.js:8-27; src/constants.js:2). Dashboard normally binds 127.0.0.1:8787; explicit non-local deployment requires opt-in, TLS and a supplied token of at least 20 characters (src/dashboard.js:65-83). Watch starts the first matching webhook/Slack/issues receiver, otherwise polls sources (src/cli.js:312-327).",
+    "assets": [
+      "Business message bodies, author identities, raw source payloads, attachments, classifications, actions, approvals and learnings under the configured state root (src/storage.js:12-27,102-103,158-159,181-182).",
+      "Mailbox credentials, webhook/signing secrets, GitHub API tokens and AI API keys. References resolve from process environment or the macOS Keychain; Keychain reads use execFileSync with argument arrays (src/secrets.js:27-65). Legacy inline receiver/API secrets also remain accepted (src/adapters/webhook.js:43; src/adapters/slack.js:60; src/adapters/issues.js:64,107).",
+      "Operator dashboard bearer authority, which protects data access and administrative mutations through one shared token rather than distinct user roles (src/dashboard.js:102-113,701-704).",
+      "Outbound authority to send email, append an IMAP draft and comment on GitHub issues; policy configuration, global auto-action state, approval records and counters determine execution eligibility (src/workflow.js:201-270).",
+      "Backups and Strata/TotalRecall exports contain business records and require filesystem confidentiality outside the application (src/backup.js:14-29,84-115; src/exports.js:6-18,25-62)."
+    ],
+    "trustBoundaries": [
+      "Remote message senders control message content, and authenticated webhook clients control accepted JSON payloads. Receiver authentication precedes normalization and state writes. Generic webhook requires a constant-time bearer/query-token comparison; Slack requires timestamped HMAC; issues accept GitHub HMAC when supplied or bearer/header/query token otherwise. All receiver implementations bind loopback (src/adapters/webhook.js:40-75; src/adapters/slack.js:57-115; src/adapters/issues.js:61-96,130-135).",
+      "Browser or HTTP client to dashboard: landing HTML and health are public, while API routes require a token supplied in Authorization, x-intake-token or query parameters. Non-local dashboard startup has separate opt-in/TLS/token constraints. The HTML sends CSP/frame protections; API replies use no-store and nosniff (src/dashboard.js:65-103,701-723). Token-bearing clients have operator authority, including source/settings and action workflows; there is no inspected evidence of tenant isolation.",
+      "External content to action execution: rules and safety checks run before optional AI; AI suggestions can modify tags/category/queue, increase risk and require review. AI output is not directly executed (src/workflow.js:91-134). runAction re-evaluates current policy and source permissions, then requires approval unless auto_execute_allowed; email drafts become remote IMAP writes, send_response and comment_issue invoke adapters (src/workflow.js:201-257).",
+      "Operator configuration to credential recipients: email source settings choose IMAP/SMTP hosts, defaulting to mail.privateemail.com:993 and :465; source.secret_ref supplies the password (src/adapters/email.js:172-231). AI settings or environment choose a base URL and environment key reference, and classification sends message title/body plus bearer credentials to that base URL with /chat/completions appended (src/ai.js:69-101,112-144). These are trusted operator-controlled destinations, not sender-controlled configuration.",
+      "Approved action to external audience: email destination comes from item.author_email and body from action.body (src/adapters/email.js:75-87); GitHub repository prefers item.metadata.project over source.config.repository, with numeric issue and owner/name validation (src/adapters/issues.js:104-121). Approval currently records status/by/time rather than a payload/destination digest (src/workflow.js:179-186); dashboard edits preserve prior approval fields and can retain approved status (src/dashboard.js:322-338). This is an approval-binding investigation surface, not an independently confirmed exploit.",
+      "Filesystem paths to sensitive reads/writes: record IDs are validated before state writes, and attachment quarantine filenames use validated source/item IDs and hashed names. Attachment download checks a lexical raw/attachments boundary and size before reading (src/storage.js:102-103,158-159,181-182; src/attachments.js:21-28,45-63). Host filesystem ownership remains a prerequisite; lexical checks do not establish isolation from a principal that can modify the state tree.",
+      "Operator-imported backup to filesystem: restore verifies manifest format, version, path spelling, sizes and SHA-256, then optionally removes the selected target and writes files under a lexical safeJoin boundary. Import provenance is trusted operationally; checksums do not authenticate the archive author (src/backup.js:40-65,119-155)."
+    ],
+    "attackerCapabilities": [
+      "An external sender may submit adversarial message text and attachments through a configured source; this does not imply possession of dashboard credentials, process environment, filesystem ownership or outbound API credentials.",
+      "A local network client can contact loopback receivers but must satisfy the relevant token/signature control. Internet reachability requires an external forwarding/tunnel arrangement not established by inspected source.",
+      "A website may induce browser requests to the local dashboard, but token authentication rather than ambient cookies is the inspected control. A token holder already has operator authority; arbitrary configuration changes by that same holder are not automatically a privilege escalation.",
+      "A supplier of an archive or file-drop message can control its content when an operator imports it. Backup restore and export target choices belong to the operator, so security impact requires a malformed-input escape, unauthorized disclosure, or capability beyond the operator's intended import.",
+      "A compromised AI endpoint can return classifier suggestions and receives message content when enabled. It does not obtain a direct adapter execution interface from the inspected classifier response handling (src/ai.js:74-106; src/workflow.js:123-134)."
+    ],
+    "securityObjectives": [
+      "Preserve compatibility while keeping inbound content as data, retaining source authentication and preventing unauthorized dashboard access.",
+      "Keep local-default services loopback-bound and enforce explicit TLS/token requirements for the supported non-local dashboard deployment (src/dashboard.js:67-83).",
+      "Prevent message/provider output from bypassing action permissions, required review, the default-disabled global auto-action switch or configured rate budgets (src/policy.js:3-44,64-84; src/storage.js:433-437).",
+      "Bind operator approval meaningfully to the action body, type and external destination; independently inspect mutable approval state and concurrency rather than assuming source authentication supplies approval.",
+      "Keep sensitive state, quarantine reads and restored content within intended filesystem locations, preserve credential references without disclosure, and keep backup/export recipients explicit.",
+      "Honor documented encrypted-mail, no-attachment-execution and approval guarantees, while distinguishing enforced controls from deployment assumptions (docs/security-model.md:5-13)."
+    ],
+    "assumptions": [
+      "This is an offline architecture review, not completed security-audit coverage. No application execution, external services, live configuration or credential material was used.",
+      "The ordinary deployment is a trusted local operator account. No multi-user/tenant security boundary or deployed internet exposure was established.",
+      "CLI dotenv discovery differs from state-root resolution: files are computed as join(cwd,'.env') and join(cwd,preexisting INTAKE_DIR || '.intake','.env') before CLI --dir parsing. Consequently --dir does not choose the dotenv directory; an INTAKE_DIR introduced by the first dotenv file does not change the already-built second path (bin/intake.js:5-6; src/secrets.js:5-7; src/cli.js:60-61). Absolute INTAKE_DIR behavior should be checked against Node path.join semantics, rather than assumed to read <absolute INTAKE_DIR>/.env.",
+      "docs/security-model.md:6 describes secrets through environment references, but runtime additionally supports macOS Keychain and inline receiver/API credentials (src/secrets.js:35-38; src/adapters/webhook.js:43; src/adapters/slack.js:60; src/adapters/issues.js:107). Default backup exclusions cover .env and secrets/, not inline credentials residing in config JSON (src/backup.js:110-115).",
+      "docs/security-model.md:13 says approval is required for risky/outbound actions. evaluatePolicy computes requires_human_review separately from auto_execute_allowed, whose expression does not include that review flag (src/policy.js:13-33). The parent should validate the precise supported configuration and reachable consequence before calling this a finding.",
+      "Quarantine is opt-in and is storage containment, not malware scanning (src/attachments.js:7-28). Filesystem ACLs, encryption at rest, reverse-proxy controls, credential scopes and downstream import review are outside the inspected implementation.",
+      "AI HTTPS acceptance and the explicit insecure-localhost escape hatch are string-prefix based; exact URL parsing and recipient restrictions require focused validation (src/ai.js:134-144)."
+    ]
+  },
+  "effectiveResources": [
+    {
+      "consumer": "State storage",
+      "deployment": "CLI and CLI-started servers",
+      "configurationChain": "--dir > INTAKE_DIR > .intake",
+      "effectiveValue": "<root>/config/{sources,policies,rules,agents,settings,meta}.json; <root>/{items,actions,learnings,index,logs,raw}",
+      "recipients": "Local process; authenticated dashboard operator",
+      "enforcingControl": "Record-ID validation and host filesystem permissions",
+      "evidence": "src/storage.js:8-27,102-103,158-159,181-182"
+    },
+    {
+      "consumer": "Dotenv loader",
+      "deployment": "bin/intake.js startup",
+      "configurationChain": "Existing environment intakeDir captured before dotenv and CLI parsing; existing truthy environment values win",
+      "effectiveValue": "join(cwd,'.env'); join(cwd,preexisting INTAKE_DIR || '.intake','.env')",
+      "recipients": "Process environment and subsequent secret consumers",
+      "enforcingControl": "Trusted local files; only fills absent/falsy environment values",
+      "evidence": "bin/intake.js:5-6; src/secrets.js:5-23",
+      "discrepancy": "--dir controls state but not dotenv discovery."
+    },
+    {
+      "consumer": "Dashboard",
+      "deployment": "Default local",
+      "configurationChain": "options.host || 127.0.0.1; options.port ?? 8787; token option > environment > generated",
+      "effectiveValue": "http://127.0.0.1:8787 by default; generated 24-byte base64url token",
+      "recipients": "Token-holding operator clients",
+      "enforcingControl": "Per-request constant-time token authentication",
+      "evidence": "src/dashboard.js:65-102,120-127,701-704"
+    },
+    {
+      "consumer": "Dashboard",
+      "deployment": "Explicit non-local",
+      "configurationChain": "Non-local host plus allowNonLocal, tlsCert, tlsKey and explicit token",
+      "effectiveValue": "https://<configured host>:<configured port>; certificate/key files supplied by operator",
+      "recipients": "Network clients with shared operator token",
+      "enforcingControl": "Startup refuses absent opt-in/TLS/explicit token or token shorter than 20 characters",
+      "evidence": "src/dashboard.js:67-83,120-127"
+    },
+    {
+      "consumer": "Webhook receivers",
+      "deployment": "watch selects first matching source",
+      "configurationChain": "options.port/path > source.config.port/path > defaults",
+      "effectiveValue": "Generic: 127.0.0.1:8765/webhook/<source.id>; issues: 127.0.0.1:8765/webhook/<source.type>; Slack: 127.0.0.1:8766/slack/<source.id>",
+      "recipients": "Authenticated event producers",
+      "enforcingControl": "Generic token; Slack timestamp/HMAC; GitHub optional-signature branch or shared-token fallback",
+      "evidence": "src/cli.js:312-321; src/adapters/webhook.js:40-75; src/adapters/issues.js:61-96,130-135; src/adapters/slack.js:57-115"
+    },
+    {
+      "consumer": "Email",
+      "deployment": "Sync, connection test and approved actions",
+      "configurationChain": "source.config IMAP/SMTP values > defaults; source.secret_ref",
+      "effectiveValue": "Default mail.privateemail.com:993 IMAP and :465 SMTP; drafts mailbox defaults Drafts; send recipient item.author_email",
+      "recipients": "Configured mail server and action recipient",
+      "enforcingControl": "Secure transport configuration, secret resolution and workflow approval/policy gate",
+      "evidence": "src/adapters/email.js:75-100,172-231; src/workflow.js:201-255"
+    },
+    {
+      "consumer": "GitHub comments",
+      "deployment": "comment_issue action",
+      "configurationChain": "item.metadata.project > source.config.repository; item thread ID > native ID; API token ref > inline token",
+      "effectiveValue": "https://api.github.com/repos/<owner/name>/issues/<numeric ID>/comments",
+      "recipients": "GitHub and repository audience",
+      "enforcingControl": "Repository/issue syntax validation plus workflow policy/approval",
+      "evidence": "src/adapters/issues.js:104-127; src/workflow.js:201-257"
+    },
+    {
+      "consumer": "AI classification",
+      "deployment": "Explicitly enabled AI",
+      "configurationChain": "settings base URL > INTAKE_AI_BASE_URL > provider preset; configured/preset environment-key name",
+      "effectiveValue": "<base_url without trailing slash>/chat/completions; transmits title/body/tags/queue/risk plus bearer API key",
+      "recipients": "Configured AI provider",
+      "enforcingControl": "AI enable gate, URL validator and environment secret lookup",
+      "evidence": "src/ai.js:69-144"
+    },
+    {
+      "consumer": "Attachment quarantine",
+      "deployment": "Source enables quarantine",
+      "configurationChain": "quarantine_attachments or attachment_quarantine equals true",
+      "effectiveValue": "<root>/raw/attachments/<validated source ID>/<validated item ID>-<filename/checksum hash>.<safe extension>",
+      "recipients": "Local process; authenticated dashboard downloads",
+      "enforcingControl": "Validated IDs; lexical download containment; 25 MiB default download cap",
+      "evidence": "src/attachments.js:5-28,45-63; src/dashboard.js:149-158"
+    },
+    {
+      "consumer": "Backups and restore",
+      "deployment": "CLI operator workflow",
+      "configurationChain": "output option > <root>/backups default; restore --target > root; force explicit",
+      "effectiveValue": "<root>/backups/intake-backup-<timestamp>.json.gz; restored files at safeJoin(targetRoot,file.path)",
+      "recipients": "Local/archive recipient; restored application",
+      "enforcingControl": "Default .env/secrets exclusion; manifest checksums/path checks; nonempty target requires force",
+      "evidence": "src/backup.js:14-29,54-65,110-155,170-172; src/cli.js:552-555"
+    },
+    {
+      "consumer": "Strata export",
+      "deployment": "CLI strata daily",
+      "configurationChain": "options.output > settings.strata_import_dir > <root>/strata/daily",
+      "effectiveValue": "<selected directory>/intake-learnings-<day>.md",
+      "recipients": "Filesystem destination and downstream memory importer",
+      "enforcingControl": "Operator controls destination; local filesystem permissions",
+      "evidence": "src/exports.js:6-21"
+    },
+    {
+      "consumer": "TotalRecall export",
+      "deployment": "CLI totalrecall export",
+      "configurationChain": "options.output > settings.totalrecall_export_dir > <root>/totalrecall/exports",
+      "effectiveValue": "<selected directory>/intake-totalrecall-<day>.json",
+      "recipients": "Filesystem destination and downstream importer",
+      "enforcingControl": "Selection of outcome/learning records; local filesystem permissions",
+      "evidence": "src/exports.js:25-63"
+    }
+  ],
+  "resolved_questions": [
+    "Receiver binding is hard-coded loopback, distinct from configurable dashboard non-local binding.",
+    "The watch command starts one selected receiver; it does not start every configured receiver.",
+    "AI classification is an optional outbound data transfer and suggestion interface, not a direct executable tool interface.",
+    "Restore checksums validate internal consistency, not archive provenance.",
+    "Dashboard token possession represents full operator authority; do not invent separate dashboard roles.",
+    "Dotenv location does not follow CLI --dir, and default backup exclusion does not inspect secrets embedded in config JSON."
+  ],
+  "unresolved_questions": [
+    "Does any production deployment expose loopback receivers through a proxy, and what limits/authentication does that proxy enforce?",
+    "Can requires_human_review or high-risk classification coexist with auto_execute_allowed under supported configuration and cause execution without approval?",
+    "Should editing an approved action invalidate approval, and should approval bind the current item-derived recipient/repository as well as body/type?",
+    "Are concurrent runs supported, and do action execution/counter/index updates need cross-process serialization or idempotency?",
+    "Are imported backups and file-drop directories untrusted in actual use, including symlinks or oversized compressed inputs?",
+    "What are the intended exact URL semantics of the AI localhost exception and operator-defined endpoints?",
+    "Are state directories and exports subject to explicit private file modes or host ACL requirements, and must legacy inline secrets remain compatible?"
+  ]
+}

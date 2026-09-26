@@ -1,0 +1,127 @@
+{
+  "review": "Independent offline source security review",
+  "baseline_commit": "e2140681bfef3ed02f1d09812c13c6ecd908d2df",
+  "method": "Read-only source inspection; no application execution, provider calls, exploit execution, dependency advisory lookup, or network activity. Only this audit artifact was written. Findings refer to baseline source; parent-agent remediation is not verified here.",
+  "findings": [
+    {
+      "id": "SEC-01",
+      "severity": "high",
+      "title": "Auto-execution bypasses human-review requirements and rejected decisions",
+      "locations": ["src/policy.js:13-33", "src/workflow.js:201-247"],
+      "evidence": "Policy computes requiresHumanReview but does not include its negation in auto_execute_allowed. runAction accepts any non-executed status when auto allowance is true, including rejected. High/critical items also become eligible when the configured ceiling permits them.",
+      "prerequisites": "Operator has enabled global/source auto-actions and a policy permits auto-execution; an agent or operator invokes run on an affected action.",
+      "impact": "Outbound sends/comments or local mutations can execute despite an explicit human gate or rejection.",
+      "counterevidence": "Default global auto-actions are off and default policy blocks direct sending. No autonomous polling executor invokes runAction by itself.",
+      "fix": "Require absence of all human-review conditions for automatic execution; make rejection terminal and enforce lifecycle transitions. Preserve explicit human approval for otherwise allowed actions."
+    },
+    {
+      "id": "SEC-02",
+      "severity": "high",
+      "title": "Rule action blocks and policy confidence thresholds are descriptive only",
+      "locations": ["src/rules.js:6-42", "src/policy.js:3-33", "src/storage.js:473-475"],
+      "evidence": "applyRules ignores blocked_actions entirely. evaluatePolicy reads only policy-level blocked_actions and never reads confidence_threshold. Defaults and documentation advertise these controls.",
+      "prerequisites": "An operator permits an action globally while relying on a matching rule to block it, or enables auto-actions while relying on confidence_threshold.",
+      "impact": "Configured safety constraints do not constrain execution.",
+      "counterevidence": "Default sending block independently prevents direct sends; risk ceilings still apply to auto-execution.",
+      "fix": "Carry trusted matched-rule blocks into policy evaluation, including auto_execute, and enforce finite confidence thresholds for automatic execution."
+    },
+    {
+      "id": "SEC-03",
+      "severity": "medium",
+      "title": "Nonmatching policies silently authorize through first-policy fallback",
+      "locations": ["src/policy.js:4"],
+      "evidence": "A failed policies.find falls back to policies[0], even when that policy explicitly scopes itself to a different source/category.",
+      "prerequisites": "Deployment uses scoped policies without a matching catch-all.",
+      "impact": "An action outside the configured policy scope can inherit unrelated allowances.",
+      "counterevidence": "Default policy explicitly matches all sources/categories, so default behavior is unaffected.",
+      "fix": "Return a blocked result when no policy applies; preserve explicit wildcard behavior."
+    },
+    {
+      "id": "SEC-04",
+      "severity": "medium",
+      "title": "Insecure-localhost URL exception accepts external hosts",
+      "locations": ["src/ai.js:70-77", "src/ai.js:134-144"],
+      "evidence": "startsWith('http://localhost') and startsWith('http://127.0.0.1') accept external suffix hosts such as localhost.attacker.example; fetch sends the selected API key as a bearer credential.",
+      "prerequisites": "KUJO_AI_SDK_ALLOW_INSECURE_LOCALHOST=true and a misleading configured base URL, with AI enabled and an API key present.",
+      "impact": "API key and inbound content can cross an unencrypted external connection despite a localhost-only exception.",
+      "counterevidence": "Configuration is operator-controlled; exception is disabled by default. This is not an unauthenticated remote settings write.",
+      "fix": "Parse URL and compare exact normalized hostname, protocol, username/password, query and fragment; use the parsed normalized value consistently."
+    },
+    {
+      "id": "SEC-05",
+      "severity": "medium",
+      "title": "Secret-free output omits supported inline secret fields",
+      "locations": ["src/source-config.js:83-88", "src/adapters/slack.js:62", "src/cli.js:235-241", "src/backup.js:94-115"],
+      "evidence": "sanitizeSource masks token/api_token but not supported config.signing_secret. Default backup exclusions skip .env and secrets directories but copy sources.json verbatim, including supported inline token, api_token and signing_secret.",
+      "prerequisites": "A source uses a supported legacy inline secret and an operator shares default config export or a backup created with includeSecrets=false.",
+      "impact": "Webhook signing/authentication secrets or outbound API tokens leak through apparently secret-free artifacts.",
+      "counterevidence": "Recommended secret references do not embed values; dashboard source reads require its operator token.",
+      "fix": "Sanitize all supported inline credential fields in source output and secret-excluding backups, leaving reference fields intact; test preservation under explicit includeSecrets."
+    },
+    {
+      "id": "SEC-06",
+      "severity": "medium",
+      "title": "Proposed rules are active before approval",
+      "locations": ["src/cli.js:495-509", "src/rules.js:10-12", "src/rules.js:55-81"],
+      "evidence": "rules propose saves a rule with status proposed; applyRules iterates it without checking status. The separate rules approve command has no effect on eligibility.",
+      "prerequisites": "Operator or agent proposes an inbound-derived rule and later classifies another matching item before review.",
+      "impact": "Unreviewed inbound-derived classification and routing affect future items.",
+      "counterevidence": "Proposal creation itself requires local operator execution; proposed rules do not lower existing risk and do not currently contain action blocks.",
+      "fix": "Skip explicitly nonapproved rules while preserving existing legacy rules with no status."
+    },
+    {
+      "id": "SEC-07",
+      "severity": "medium",
+      "title": "Restore verifies a different read from the archive it consumes and mutates before complete validation",
+      "locations": ["src/backup.js:54-67", "src/backup.js:119-136", "src/backup.js:207-221"],
+      "evidence": "restoreBackup verifies one decompression then decompresses again without validating that second object. Validation also accepts '.' and duplicate or file/parent-conflicting paths when their content checksums match. With force, target is deleted before extraction discovers such conflicts. Decompressed bytes are unbounded.",
+      "prerequisites": "Operator restores a malformed/untrusted backup, or another local actor can replace it between reads. Force replacement is required for destruction of an existing target.",
+      "impact": "Unexpected unverified files can be restored; malformed archives can destroy a target then fail; compressed inputs can exhaust memory.",
+      "counterevidence": "Lexical safeJoin prevents ordinary ../ writes outside the target. Archive is local operator-selected, not accepted by a network endpoint.",
+      "fix": "Read once with a decompressed-byte bound, validate strict entry shape and canonical unique nonconflicting file paths, stage the full store before replacement, then restore exactly the validated bytes."
+    },
+    {
+      "id": "SEC-08",
+      "severity": "medium",
+      "title": "Concurrent action runs can duplicate outbound side effects",
+      "locations": ["src/workflow.js:201-276", "src/dashboard.js:312-315", "src/policy.js:46-96"],
+      "evidence": "Each run reads status, performs external execution, and only then saves executed. Two concurrent requests can both read approved and send/comment. Automatic budget counters use read-modify-write after execution and can similarly overrun caps.",
+      "prerequisites": "Two authenticated calls or local processes run the same action or simultaneously consume the remaining auto budget.",
+      "impact": "Duplicate outward messages and exceeded configured rate limits.",
+      "counterevidence": "Sequential reruns return the executed record. API is authenticated; this does not independently give outsiders run access.",
+      "fix": "Serialize execution and budget reservations per store across supported processes, re-read status under lock, and explicitly handle crash ambiguity without claiming exactly-once network delivery."
+    },
+    {
+      "id": "SEC-09",
+      "severity": "medium",
+      "title": "File-drop symlinks cross the inbound filesystem boundary",
+      "locations": ["src/adapters/file.js:17-38"],
+      "evidence": "syncFileSource uses stat, which follows symlinks, then readFile. A drop-folder entry named with a supported extension can point outside the folder and be imported as inbound content.",
+      "prerequisites": "A less-trusted actor can add symlinks to the configured drop directory but cannot read a file the Intake account can read.",
+      "impact": "Intake copies the target into raw/items and can submit its content to an enabled AI provider.",
+      "counterevidence": "Directory path is operator configured; exploitation requires writable local/drop filesystem access, not merely a JSON payload.",
+      "fix": "Reject symlink entries and use no-follow file handles with regular-file checks; bound file size before buffering."
+    }
+  ],
+  "hardening_observations": [
+    "readRaw and attachment downloads enforce lexical containment, not realpath containment. A local actor must be able to plant store symlinks for an escape; no inbound adapter accepts arbitrary quarantine_path, so this was not elevated to a remote vulnerability.",
+    "IMAP runtime construction does not call validateEmailConfig and accepts secure:false, unlike SMTP runtime guard. Dependency STARTTLS behavior was not audited, so plaintext password disclosure is not claimed. Enforce documented encrypted-mail policy at the runtime boundary.",
+    "Atomic write temporary names use pid and millisecond timestamp and are opened nonexclusively; simultaneous writes to the same path may collide. Index read-modify-write can lose concurrent entries. These are concurrency integrity issues independent of authentication.",
+    "Dashboard action editing preserves approved status and approval metadata after body/type changes; reset approval when execution-relevant content changes. This requires existing operator access, not an unauthenticated attacker.",
+    "Dashboard rotation updates sessionStorage but api() closes over an immutable initial token, so the current UI starts receiving 401 after rotation until reload. This is a confirmed availability bug, not an auth bypass.",
+    "No dependency vulnerability claims were made because this review was offline and did not inspect advisory data."
+  ],
+  "counterevidence": [
+    "Dashboard has bearer/custom-header authentication, random local default token, HTTPS and minimum explicit-token checks for nonlocal binding, no cookies or permissive CORS, and frame-denying headers.",
+    "Inbound dashboard fields use textContent; raw inbound HTML is not inserted as markup. HTML sinks are restricted to package-owned SVG icons.",
+    "Webhook receivers bind loopback, cap request bodies at 1 MiB, and authenticate; Slack checks HMAC and timestamp skew. GitHub supports HMAC with explicit token compatibility.",
+    "Storage record IDs reject slash traversal. Quarantined attachment names derive from safe IDs and hashes, and downloads have a 25 MiB size check.",
+    "Email headers strip CR/LF, keychain invocation uses execFileSync with an argument array, and no inbound content is evaluated as shell or JavaScript."
+  ],
+  "fully_reviewed_files": [
+    "src/adapters/email.js", "src/adapters/file.js", "src/adapters/index.js", "src/adapters/issues.js", "src/adapters/manual.js", "src/adapters/slack.js", "src/adapters/webhook.js",
+    "src/ai.js", "src/attachments.js", "src/backup.js", "src/cli.js", "src/constants.js", "src/dashboard.js", "src/demo.js", "src/doctor.js", "src/evals.js", "src/exports.js", "src/migrations.js", "src/models.js", "src/policy.js", "src/redaction.js", "src/render.js", "src/retention.js", "src/rules.js", "src/safety.js", "src/secrets.js", "src/shipcheck.js", "src/source-config.js", "src/source-history.js", "src/source-templates.js", "src/storage.js", "src/util.js", "src/workflow.js",
+    "bin/intake.js", "scripts/bench.mjs", "scripts/bench-threshold.mjs", ".github/scripts/check-kujo-tool-artifacts.sh", ".github/workflows/verify.yml", ".github/workflows/kujo-tool-artifacts-guard.yml", "package.json"
+  ],
+  "coverage_limitations": "All runtime source files and executable support scripts were inspected. Test files, dependency internals and every documentation page were not fully audited. No stronger end-to-end or exploit validation is claimed."
+}

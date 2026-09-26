@@ -1,0 +1,884 @@
+{
+  "documentType": "codex-security.findings",
+  "findings": [
+    {
+      "attackPath": {
+        "dataflow": {
+          "summary": "Policy computes requiresHumanReview but does not include its negation in auto_execute_allowed. runAction accepts any non-executed status when auto allowance is true, including rejected. High/critical items also become eligible when the configured ceiling permits them."
+        },
+        "reachability": {
+          "summary": "Operator has enabled global/source auto-actions and a policy permits auto-execution; an agent or operator invokes run on an affected action."
+        }
+      },
+      "codeEvidence": [
+        {
+          "code": "  const requiresHumanReview =\n    applicable.requires_human_review ||\n    item.risk_level === \"high\" ||\n    item.risk_level === \"critical\" ||\n    blocked ||\n    !underRisk;\n\n  return {\n    policy_id: applicable.id,\n    allowed: allowed && !blocked,\n    blocked,\n    risk_within_ceiling: underRisk,\n    requires_human_review: requiresHumanReview,\n    auto_execute_allowed:\n      allowed &&\n      !blocked &&\n      underRisk &&\n      globalAutoEnabled &&\n      sourceAutoEnabled &&\n      applicable.auto_execute_allowed === true &&\n      rateBudget.allowed,",
+          "endLine": 33,
+          "explanation": "Policy computes requiresHumanReview but does not include its negation in auto_execute_allowed. runAction accepts any non-executed status when auto allowance is true, including rejected. High/critical items also become eligible when the configured ceiling permits them.",
+          "id": "sec-01-0",
+          "label": "Auto-execution bypasses human-review requirements and rejected decisions",
+          "path": "src/policy.js",
+          "startLine": 13
+        },
+        {
+          "code": "export async function runAction(root, actionId) {\n  const action = await requireAction(root, actionId);\n  if (action.status === \"executed\") {\n    return action;\n  }\n  const item = await requireItem(root, action.intake_item_id);\n  const source = await sourceFor(root, item.source_id);\n  const settings = await loadSettings(root);\n  const policies = await loadPolicies(root);\n  const actionType = action.type === \"draft_response\" && source?.type === \"email\" ? \"append_remote_draft\" : action.type;\n  const policyResult = evaluatePolicy({ item, actionType, policies, settings, source });\n  if (policyResult.blocked || !policyResult.allowed) {\n    const blocked = {\n      ...action,\n      status: \"blocked\",\n      result: {\n        error: \"action is blocked by policy\",\n        policy_result: policyResult\n      }\n    };\n    await saveAction(root, blocked);\n    await logEvent(root, \"actions\", {\n      source_id: item.source_id,\n      item_id: item.id,\n      action_id: action.id,\n      event_type: \"action_policy_blocked\",\n      status: \"blocked\",\n      risk_level: item.risk_level,\n      policy_result: policyResult\n    });\n    return blocked;\n  }\n  if (action.status !== \"approved\" && !policyResult.auto_execute_allowed) {\n    const blocked = { ...action, status: \"blocked\", result: { error: \"action requires approval before execution\", policy_result: policyResult } };\n    await saveAction(root, blocked);\n    await logEvent(root, \"actions\", {\n      source_id: item.source_id,\n      item_id: item.id,\n      action_id: action.id,\n      event_type: \"action_blocked\",\n      status: \"blocked\",\n      risk_level: item.risk_level,\n      policy_result: policyResult\n    });\n    return blocked;\n  }\n  const autoExecuted = action.status !== \"approved\" && policyResult.auto_execute_allowed;",
+          "endLine": 247,
+          "explanation": "Policy computes requiresHumanReview but does not include its negation in auto_execute_allowed. runAction accepts any non-executed status when auto allowance is true, including rejected. High/critical items also become eligible when the configured ceiling permits them.",
+          "id": "sec-01-1",
+          "label": "Auto-execution bypasses human-review requirements and rejected decisions",
+          "path": "src/workflow.js",
+          "startLine": 201
+        }
+      ],
+      "confidence": {
+        "level": "high",
+        "rationale": "Independent source trace; parent regression tests reproduce baseline failures and verify remediation."
+      },
+      "extensions": {
+        "baselineRevision": "e2140681bfef3ed02f1d09812c13c6ecd908d2df",
+        "impact": "Outbound sends/comments or local mutations can execute despite an explicit human gate or rejection.",
+        "remediationStatus": "fixed-in-working-tree"
+      },
+      "findingId": "csf_8b893fc34488ae6d45587754",
+      "fingerprints": {
+        "algorithm": "codex-security/v1",
+        "primary": "codex-security/v1:sha256:29c39b1599c57482bc303e8cd9d58c7ff41ba3a4fea52f97d058eec9acd1da3c"
+      },
+      "identity": {
+        "anchor": "intake.sec-01"
+      },
+      "locations": [
+        {
+          "endLine": 33,
+          "path": "src/policy.js",
+          "role": "root_control",
+          "startLine": 13
+        },
+        {
+          "endLine": 247,
+          "path": "src/workflow.js",
+          "role": "sink",
+          "startLine": 201
+        }
+      ],
+      "occurrenceId": "occ_1301499cf50fab1eaead6ba1",
+      "provenance": {
+        "candidateId": "SEC-01",
+        "source": "local_plugin"
+      },
+      "remediation": "Require absence of all human-review conditions for automatic execution; make rejection terminal and enforce lifecycle transitions. Preserve explicit human approval for otherwise allowed actions.",
+      "rootCause": {
+        "summary": "Policy computes requiresHumanReview but does not include its negation in auto_execute_allowed. runAction accepts any non-executed status when auto allowance is true, including rejected. High/critical items also become eligible when the configured ceiling permits them."
+      },
+      "ruleId": "intake.sec-01",
+      "severity": {
+        "level": "medium",
+        "rationale": "Operator has enabled global/source auto-actions and a policy permits auto-execution; an agent or operator invokes run on an affected action. Defaults and operator-controlled entry points limit likelihood."
+      },
+      "summary": "Policy computes requiresHumanReview but does not include its negation in auto_execute_allowed. runAction accepts any non-executed status when auto allowance is true, including rejected. High/critical items also become eligible when the configured ceiling permits them.",
+      "taxonomy": {
+        "category": "authorization",
+        "cwe": [
+          "CWE-863"
+        ]
+      },
+      "title": "Auto-execution bypasses human-review requirements and rejected decisions",
+      "validation": {
+        "summary": "Default global auto-actions are off and default policy blocks direct sending. No autonomous polling executor invokes runAction by itself. Parent fixes and tests are documented in repository-hardening.md."
+      }
+    },
+    {
+      "attackPath": {
+        "dataflow": {
+          "summary": "applyRules ignores blocked_actions entirely. evaluatePolicy reads only policy-level blocked_actions and never reads confidence_threshold. Defaults and documentation advertise these controls."
+        },
+        "reachability": {
+          "summary": "An operator permits an action globally while relying on a matching rule to block it, or enables auto-actions while relying on confidence_threshold."
+        }
+      },
+      "codeEvidence": [
+        {
+          "code": "export function applyRules(item, rules) {\n  const text = `${item.title || \"\"}\\n${item.body || \"\"}\\n${item.normalized_text || \"\"}`.toLowerCase();\n  const matched = [];\n  let next = { ...item, tags: [...(item.tags || [])], suggested_actions: [...(item.suggested_actions || [])] };\n\n  for (const rule of rules) {\n    const terms = rule.match_any || [];\n    if (!terms.length || !includesAny(text, terms)) continue;\n    matched.push({\n      id: rule.id,\n      version: rule.version || 1,\n      description: rule.description,\n      matched_terms: terms.filter((term) => text.includes(String(term).toLowerCase()))\n    });\n    next.tags = uniq([...(next.tags || []), ...(rule.tags || [])]);\n    next.suggested_actions = uniq([...(next.suggested_actions || []), ...(rule.suggested_actions || [])]);\n    if (rule.category) next.category = rule.category;\n    if (rule.intent) next.intent = rule.intent;\n    if (rule.queue) next.queue = rule.queue;\n    if (riskGreater(rule.risk_level, next.risk_level)) next.risk_level = rule.risk_level;\n    if (rule.risk_level === \"high\" || rule.risk_level === \"critical\") {\n      next.status = \"needs_review\";\n    } else if (next.status === \"new\") {\n      next.status = \"triaged\";\n    }\n  }\n\n  next.last_processed_at = isoNow();\n  next.policy = {\n    ...(next.policy || {}),\n    rule_matches: matched\n  };\n  return { item: next, matches: matched };\n}\n\nexport function explainRules(item, rules) {\n  const result = applyRules(item, rules);",
+          "endLine": 42,
+          "explanation": "applyRules ignores blocked_actions entirely. evaluatePolicy reads only policy-level blocked_actions and never reads confidence_threshold. Defaults and documentation advertise these controls.",
+          "id": "sec-02-0",
+          "label": "Rule action blocks and policy confidence thresholds are descriptive only",
+          "path": "src/rules.js",
+          "startLine": 6
+        },
+        {
+          "code": "export function evaluatePolicy({ item, actionType, policies, settings, source }) {\n  const applicable = policies.find((policy) => policyApplies(policy, item)) || policies[0];\n  const policyAllowed = applicable.allowed_actions.includes(actionType) || applicable.allowed_actions.includes(\"*\");\n  const sourceAllowed = !Array.isArray(source?.config?.allowed_actions) || source.config.allowed_actions.includes(actionType) || source.config.allowed_actions.includes(\"*\");\n  const allowed = policyAllowed && sourceAllowed;\n  const blocked = applicable.blocked_actions.includes(actionType) || applicable.blocked_actions.includes(\"*\");\n  const underRisk = riskAtMost(item.risk_level || \"low\", applicable.risk_ceiling || \"low\");\n  const globalAutoEnabled = Boolean(settings.auto_actions_enabled);\n  const sourceAutoEnabled = source ? source.auto_action_policy !== \"disabled\" : true;\n  const rateBudget = autoActionBudget(settings, applicable);\n  const requiresHumanReview =\n    applicable.requires_human_review ||\n    item.risk_level === \"high\" ||\n    item.risk_level === \"critical\" ||\n    blocked ||\n    !underRisk;\n\n  return {\n    policy_id: applicable.id,\n    allowed: allowed && !blocked,\n    blocked,\n    risk_within_ceiling: underRisk,\n    requires_human_review: requiresHumanReview,\n    auto_execute_allowed:\n      allowed &&\n      !blocked &&\n      underRisk &&\n      globalAutoEnabled &&\n      sourceAutoEnabled &&\n      applicable.auto_execute_allowed === true &&\n      rateBudget.allowed,",
+          "endLine": 33,
+          "explanation": "applyRules ignores blocked_actions entirely. evaluatePolicy reads only policy-level blocked_actions and never reads confidence_threshold. Defaults and documentation advertise these controls.",
+          "id": "sec-02-1",
+          "label": "Rule action blocks and policy confidence thresholds are descriptive only",
+          "path": "src/policy.js",
+          "startLine": 3
+        },
+        {
+          "code": "      confidence_threshold: 0.85,\n      risk_ceiling: \"medium\",\n      requires_human_review: true,",
+          "endLine": 475,
+          "explanation": "applyRules ignores blocked_actions entirely. evaluatePolicy reads only policy-level blocked_actions and never reads confidence_threshold. Defaults and documentation advertise these controls.",
+          "id": "sec-02-2",
+          "label": "Rule action blocks and policy confidence thresholds are descriptive only",
+          "path": "src/storage.js",
+          "startLine": 473
+        }
+      ],
+      "confidence": {
+        "level": "high",
+        "rationale": "Independent source trace; parent regression tests reproduce baseline failures and verify remediation."
+      },
+      "extensions": {
+        "baselineRevision": "e2140681bfef3ed02f1d09812c13c6ecd908d2df",
+        "impact": "Configured safety constraints do not constrain execution.",
+        "remediationStatus": "fixed-in-working-tree"
+      },
+      "findingId": "csf_35a78a952e52dc88a9197059",
+      "fingerprints": {
+        "algorithm": "codex-security/v1",
+        "primary": "codex-security/v1:sha256:9e1870d3a26583ff8e4c0e7c108367c780765a62d0ddf23c3c4c808c2395d3f1"
+      },
+      "identity": {
+        "anchor": "intake.sec-02"
+      },
+      "locations": [
+        {
+          "endLine": 42,
+          "path": "src/rules.js",
+          "role": "root_control",
+          "startLine": 6
+        },
+        {
+          "endLine": 33,
+          "path": "src/policy.js",
+          "role": "sink",
+          "startLine": 3
+        },
+        {
+          "endLine": 475,
+          "path": "src/storage.js",
+          "role": "sink",
+          "startLine": 473
+        }
+      ],
+      "occurrenceId": "occ_38fdba2a3e4c430efb94d89c",
+      "provenance": {
+        "candidateId": "SEC-02",
+        "source": "local_plugin"
+      },
+      "remediation": "Carry trusted matched-rule blocks into policy evaluation, including auto_execute, and enforce finite confidence thresholds for automatic execution.",
+      "rootCause": {
+        "summary": "applyRules ignores blocked_actions entirely. evaluatePolicy reads only policy-level blocked_actions and never reads confidence_threshold. Defaults and documentation advertise these controls."
+      },
+      "ruleId": "intake.sec-02",
+      "severity": {
+        "level": "medium",
+        "rationale": "An operator permits an action globally while relying on a matching rule to block it, or enables auto-actions while relying on confidence_threshold. Defaults and operator-controlled entry points limit likelihood."
+      },
+      "summary": "applyRules ignores blocked_actions entirely. evaluatePolicy reads only policy-level blocked_actions and never reads confidence_threshold. Defaults and documentation advertise these controls.",
+      "taxonomy": {
+        "category": "authorization",
+        "cwe": [
+          "CWE-863"
+        ]
+      },
+      "title": "Rule action blocks and policy confidence thresholds are descriptive only",
+      "validation": {
+        "summary": "Default sending block independently prevents direct sends; risk ceilings still apply to auto-execution. Parent fixes and tests are documented in repository-hardening.md."
+      }
+    },
+    {
+      "attackPath": {
+        "dataflow": {
+          "summary": "A failed policies.find falls back to policies[0], even when that policy explicitly scopes itself to a different source/category."
+        },
+        "reachability": {
+          "summary": "Deployment uses scoped policies without a matching catch-all."
+        }
+      },
+      "codeEvidence": [
+        {
+          "code": "  const applicable = policies.find((policy) => policyApplies(policy, item)) || policies[0];",
+          "endLine": 4,
+          "explanation": "A failed policies.find falls back to policies[0], even when that policy explicitly scopes itself to a different source/category.",
+          "id": "sec-03-0",
+          "label": "Nonmatching policies silently authorize through first-policy fallback",
+          "path": "src/policy.js",
+          "startLine": 4
+        }
+      ],
+      "confidence": {
+        "level": "high",
+        "rationale": "Independent source trace; parent regression tests reproduce baseline failures and verify remediation."
+      },
+      "extensions": {
+        "baselineRevision": "e2140681bfef3ed02f1d09812c13c6ecd908d2df",
+        "impact": "An action outside the configured policy scope can inherit unrelated allowances.",
+        "remediationStatus": "fixed-in-working-tree"
+      },
+      "findingId": "csf_f5983195af8c2aa0a752a699",
+      "fingerprints": {
+        "algorithm": "codex-security/v1",
+        "primary": "codex-security/v1:sha256:89d5fc8017d60c8d8d3c4251b2f37f1683c96773de138056166a6ccba64e3561"
+      },
+      "identity": {
+        "anchor": "intake.sec-03"
+      },
+      "locations": [
+        {
+          "endLine": 4,
+          "path": "src/policy.js",
+          "role": "root_control",
+          "startLine": 4
+        }
+      ],
+      "occurrenceId": "occ_be5093c86194cbdeb2cf5675",
+      "provenance": {
+        "candidateId": "SEC-03",
+        "source": "local_plugin"
+      },
+      "remediation": "Return a blocked result when no policy applies; preserve explicit wildcard behavior.",
+      "rootCause": {
+        "summary": "A failed policies.find falls back to policies[0], even when that policy explicitly scopes itself to a different source/category."
+      },
+      "ruleId": "intake.sec-03",
+      "severity": {
+        "level": "medium",
+        "rationale": "Deployment uses scoped policies without a matching catch-all. Defaults and operator-controlled entry points limit likelihood."
+      },
+      "summary": "A failed policies.find falls back to policies[0], even when that policy explicitly scopes itself to a different source/category.",
+      "taxonomy": {
+        "category": "authorization",
+        "cwe": [
+          "CWE-863"
+        ]
+      },
+      "title": "Nonmatching policies silently authorize through first-policy fallback",
+      "validation": {
+        "summary": "Default policy explicitly matches all sources/categories, so default behavior is unaffected. Parent fixes and tests are documented in repository-hardening.md."
+      }
+    },
+    {
+      "attackPath": {
+        "dataflow": {
+          "summary": "startsWith('http://localhost') and startsWith('http://127.0.0.1') accept external suffix hosts such as localhost.attacker.example; fetch sends the selected API key as a bearer credential."
+        },
+        "reachability": {
+          "summary": "KUJO_AI_SDK_ALLOW_INSECURE_LOCALHOST=true and a misleading configured base URL, with AI enabled and an API key present."
+        }
+      },
+      "codeEvidence": [
+        {
+          "code": "  if (!settings.ai_enabled || settings.ai_provider === \"none\") return aiUnavailableResult(item);\n  const provider = resolveAiProvider(settings);\n  if (!provider.ok) return aiUnavailableResult(item);\n\n  const response = await fetch(`${provider.base_url.replace(/\\/$/, \"\")}/chat/completions`, {\n    method: \"POST\",\n    headers: {\n      \"content-type\": \"application/json\",",
+          "endLine": 77,
+          "explanation": "startsWith('http://localhost') and startsWith('http://127.0.0.1') accept external suffix hosts such as localhost.attacker.example; fetch sends the selected API key as a bearer credential.",
+          "id": "sec-04-0",
+          "label": "Insecure-localhost URL exception accepts external hosts",
+          "path": "src/ai.js",
+          "startLine": 70
+        },
+        {
+          "code": "export function validateOpenAiCompatibleBaseUrl(baseUrl) {\n  const text = String(baseUrl || \"\").trim();\n  if (!text) return { ok: false, error: \"base URL is required\" };\n  if (text.includes(\"@\")) return { ok: false, error: \"base URL must not include embedded credentials\" };\n  if (text.includes(\"?\")) return { ok: false, error: \"base URL must not include query parameters\" };\n  if (text.includes(\"#\")) return { ok: false, error: \"base URL must not include fragments\" };\n  if (text.startsWith(\"https://\")) return { ok: true };\n  if ((text.startsWith(\"http://localhost\") || text.startsWith(\"http://127.0.0.1\")) && process.env.KUJO_AI_SDK_ALLOW_INSECURE_LOCALHOST === \"true\") {\n    return { ok: true };\n  }\n  return { ok: false, error: \"base URL must be https:// unless insecure localhost is explicitly allowed\" };",
+          "endLine": 144,
+          "explanation": "startsWith('http://localhost') and startsWith('http://127.0.0.1') accept external suffix hosts such as localhost.attacker.example; fetch sends the selected API key as a bearer credential.",
+          "id": "sec-04-1",
+          "label": "Insecure-localhost URL exception accepts external hosts",
+          "path": "src/ai.js",
+          "startLine": 134
+        }
+      ],
+      "confidence": {
+        "level": "high",
+        "rationale": "Independent source trace; parent regression tests reproduce baseline failures and verify remediation."
+      },
+      "extensions": {
+        "baselineRevision": "e2140681bfef3ed02f1d09812c13c6ecd908d2df",
+        "impact": "API key and inbound content can cross an unencrypted external connection despite a localhost-only exception.",
+        "remediationStatus": "fixed-in-working-tree"
+      },
+      "findingId": "csf_b3cd505b73c71a0e00abb77b",
+      "fingerprints": {
+        "algorithm": "codex-security/v1",
+        "primary": "codex-security/v1:sha256:0c5c9e8efc87b40660ea81618c88d0bcce6e2a7f1f9591086841bcd11098e88e"
+      },
+      "identity": {
+        "anchor": "intake.sec-04"
+      },
+      "locations": [
+        {
+          "endLine": 77,
+          "path": "src/ai.js",
+          "role": "root_control",
+          "startLine": 70
+        },
+        {
+          "endLine": 144,
+          "path": "src/ai.js",
+          "role": "sink",
+          "startLine": 134
+        }
+      ],
+      "occurrenceId": "occ_5c6f187d4225f7740d039bcf",
+      "provenance": {
+        "candidateId": "SEC-04",
+        "source": "local_plugin"
+      },
+      "remediation": "Parse URL and compare exact normalized hostname, protocol, username/password, query and fragment; use the parsed normalized value consistently.",
+      "rootCause": {
+        "summary": "startsWith('http://localhost') and startsWith('http://127.0.0.1') accept external suffix hosts such as localhost.attacker.example; fetch sends the selected API key as a bearer credential."
+      },
+      "ruleId": "intake.sec-04",
+      "severity": {
+        "level": "medium",
+        "rationale": "KUJO_AI_SDK_ALLOW_INSECURE_LOCALHOST=true and a misleading configured base URL, with AI enabled and an API key present. Defaults and operator-controlled entry points limit likelihood."
+      },
+      "summary": "startsWith('http://localhost') and startsWith('http://127.0.0.1') accept external suffix hosts such as localhost.attacker.example; fetch sends the selected API key as a bearer credential.",
+      "taxonomy": {
+        "category": "data-integrity",
+        "cwe": [
+          "CWE-295"
+        ]
+      },
+      "title": "Insecure-localhost URL exception accepts external hosts",
+      "validation": {
+        "summary": "Configuration is operator-controlled; exception is disabled by default. This is not an unauthenticated remote settings write. Parent fixes and tests are documented in repository-hardening.md."
+      }
+    },
+    {
+      "attackPath": {
+        "dataflow": {
+          "summary": "sanitizeSource masks token/api_token but not supported config.signing_secret. Default backup exclusions skip .env and secrets directories but copy sources.json verbatim, including supported inline token, api_token and signing_secret."
+        },
+        "reachability": {
+          "summary": "A source uses a supported legacy inline secret and an operator shares default config export or a backup created with includeSecrets=false."
+        }
+      },
+      "codeEvidence": [
+        {
+          "code": "  if (input.secret || input.secret_ref || input.secretRef) {\n    return input.secret || input.secret_ref || input.secretRef;\n  }\n  const keychainService = input.keychain_service || input.keychainService;\n  const keychainAccount = input.keychain_account || input.keychainAccount;\n  const secretKind = input.secret_kind || input.secretKind;",
+          "endLine": 88,
+          "explanation": "sanitizeSource masks token/api_token but not supported config.signing_secret. Default backup exclusions skip .env and secrets directories but copy sources.json verbatim, including supported inline token, api_token and signing_secret.",
+          "id": "sec-05-0",
+          "label": "Secret-free output omits supported inline secret fields",
+          "path": "src/source-config.js",
+          "startLine": 83
+        },
+        {
+          "code": "  const port = Number(options.port ?? source.config?.port ?? 8766);\n  const path = options.path || source.config?.path || `/slack/${source.id}`;\n  const signingSecret = source.secret_ref ? resolveSecretRef(source.secret_ref, source.id) : source.config?.signing_secret;\n  if (!signingSecret) throw new Error(`Slack source ${source.id} requires a signing secret_ref`);\n\n  const server = createServer(async (req, res) => {\n    try {\n      if (req.method !== \"POST\" || req.url.split(\"?\")[0] !== path) {\n        res.writeHead(404);",
+          "endLine": 66,
+          "explanation": "sanitizeSource masks token/api_token but not supported config.signing_secret. Default backup exclusions skip .env and secrets directories but copy sources.json verbatim, including supported inline token, api_token and signing_secret.",
+          "id": "sec-05-1",
+          "label": "Secret-free output omits supported inline secret fields",
+          "path": "src/adapters/slack.js",
+          "startLine": 58
+        },
+        {
+          "code": "      exported_at: isoNow(),\n      sources: flags.includeSecrets ? await loadSources(root) : sanitizeSources(await loadSources(root)),\n      policies: await loadPolicies(root),\n      rules: await loadRules(root),\n      settings: await loadSettings(root)\n    };\n    const output = flags.output;",
+          "endLine": 241,
+          "explanation": "sanitizeSource masks token/api_token but not supported config.signing_secret. Default backup exclusions skip .env and secrets directories but copy sources.json verbatim, including supported inline token, api_token and signing_secret.",
+          "id": "sec-05-2",
+          "label": "Secret-free output omits supported inline secret fields",
+          "path": "src/cli.js",
+          "startLine": 235
+        },
+        {
+          "code": "    if (shouldSkip(rel, entry, options)) continue;\n    if (entry.isDirectory()) {\n      await walk(rootPath, abs, out, options);\n      continue;\n    }\n    if (!entry.isFile()) continue;\n    const buffer = await readFile(abs);\n    out.push({\n      path: rel,\n      size: buffer.length,\n      sha256: sha256(buffer),\n      content_base64: buffer.toString(\"base64\")\n    });\n  }\n}\n\nfunction shouldSkip(rel, entry, options) {\n  const parts = rel.split(sep);\n  if (parts[0] === \"backups\") return true;\n  if (entry.name === \".DS_Store\") return true;\n  if (entry.name === \".env\" && options.includeSecrets !== true) return true;\n  if (parts[0] === \"secrets\" && options.includeSecrets !== true) return true;",
+          "endLine": 115,
+          "explanation": "sanitizeSource masks token/api_token but not supported config.signing_secret. Default backup exclusions skip .env and secrets directories but copy sources.json verbatim, including supported inline token, api_token and signing_secret.",
+          "id": "sec-05-3",
+          "label": "Secret-free output omits supported inline secret fields",
+          "path": "src/backup.js",
+          "startLine": 94
+        }
+      ],
+      "confidence": {
+        "level": "high",
+        "rationale": "Independent source trace; parent regression tests reproduce baseline failures and verify remediation."
+      },
+      "extensions": {
+        "baselineRevision": "e2140681bfef3ed02f1d09812c13c6ecd908d2df",
+        "impact": "Webhook signing/authentication secrets or outbound API tokens leak through apparently secret-free artifacts.",
+        "remediationStatus": "fixed-in-working-tree"
+      },
+      "findingId": "csf_6402bd70cbff55cc0405b04a",
+      "fingerprints": {
+        "algorithm": "codex-security/v1",
+        "primary": "codex-security/v1:sha256:bd79c628004afa3b5dbd548b55f816cd0ea4c7817b766e3beec80dba172078e2"
+      },
+      "identity": {
+        "anchor": "intake.sec-05"
+      },
+      "locations": [
+        {
+          "endLine": 88,
+          "path": "src/source-config.js",
+          "role": "root_control",
+          "startLine": 83
+        },
+        {
+          "endLine": 62,
+          "path": "src/adapters/slack.js",
+          "role": "sink",
+          "startLine": 62
+        },
+        {
+          "endLine": 241,
+          "path": "src/cli.js",
+          "role": "sink",
+          "startLine": 235
+        },
+        {
+          "endLine": 115,
+          "path": "src/backup.js",
+          "role": "sink",
+          "startLine": 94
+        }
+      ],
+      "occurrenceId": "occ_36877cb31a8b5a154cf2d947",
+      "provenance": {
+        "candidateId": "SEC-05",
+        "source": "local_plugin"
+      },
+      "remediation": "Sanitize all supported inline credential fields in source output and secret-excluding backups, leaving reference fields intact; test preservation under explicit includeSecrets.",
+      "rootCause": {
+        "summary": "sanitizeSource masks token/api_token but not supported config.signing_secret. Default backup exclusions skip .env and secrets directories but copy sources.json verbatim, including supported inline token, api_token and signing_secret."
+      },
+      "ruleId": "intake.sec-05",
+      "severity": {
+        "level": "medium",
+        "rationale": "A source uses a supported legacy inline secret and an operator shares default config export or a backup created with includeSecrets=false. Defaults and operator-controlled entry points limit likelihood."
+      },
+      "summary": "sanitizeSource masks token/api_token but not supported config.signing_secret. Default backup exclusions skip .env and secrets directories but copy sources.json verbatim, including supported inline token, api_token and signing_secret.",
+      "taxonomy": {
+        "category": "data-integrity",
+        "cwe": [
+          "CWE-200"
+        ]
+      },
+      "title": "Secret-free output omits supported inline secret fields",
+      "validation": {
+        "summary": "Recommended secret references do not embed values; dashboard source reads require its operator token. Parent fixes and tests are documented in repository-hardening.md."
+      }
+    },
+    {
+      "attackPath": {
+        "dataflow": {
+          "summary": "rules propose saves a rule with status proposed; applyRules iterates it without checking status. The separate rules approve command has no effect on eligibility."
+        },
+        "reachability": {
+          "summary": "Operator or agent proposes an inbound-derived rule and later classifies another matching item before review."
+        }
+      },
+      "codeEvidence": [
+        {
+          "code": "    return console.log(explainRules(item, rules).join(\"\\n\"));\n  }\n  if (subcommand === \"propose\") {\n    const item = await loadItem(root, args[0]);\n    if (!item) throw new Error(`no such item: ${args[0]}`);\n    const proposal = proposeRuleFromItem(item);\n    const next = [...rules, proposal];\n    await saveRules(root, next);\n    return printJson(proposal);\n  }\n  if (subcommand === \"approve\") {\n    const id = args[0];\n    const next = rules.map((rule) => rule.id === id ? { ...rule, status: \"approved\", updated_at: isoNow() } : rule);\n    await saveRules(root, next);\n    return console.log(`approved ${id}`);",
+          "endLine": 509,
+          "explanation": "rules propose saves a rule with status proposed; applyRules iterates it without checking status. The separate rules approve command has no effect on eligibility.",
+          "id": "sec-06-0",
+          "label": "Proposed rules are active before approval",
+          "path": "src/cli.js",
+          "startLine": 495
+        },
+        {
+          "code": "\n  for (const rule of rules) {\n    const terms = rule.match_any || [];",
+          "endLine": 12,
+          "explanation": "rules propose saves a rule with status proposed; applyRules iterates it without checking status. The separate rules approve command has no effect on eligibility.",
+          "id": "sec-06-1",
+          "label": "Proposed rules are active before approval",
+          "path": "src/rules.js",
+          "startLine": 10
+        },
+        {
+          "code": "    .replace(/[^a-z0-9\\s-]/g, \" \")\n    .split(/\\s+/)\n    .filter((word) => word.length > 4)\n    .slice(0, 8);\n  return {\n    id: `proposed-${item.id}`,\n    version: 1,\n    description: `Proposed rule from ${item.id}`,\n    match_any: uniq(words),\n    tags: item.tags || [],\n    category: item.category || \"support\",\n    intent: item.intent || \"needs_triage\",\n    queue: item.queue || \"needs-review\",\n    risk_level: item.risk_level || \"medium\",\n    status: \"proposed\",\n    source_item_id: item.id,\n    created_at: isoNow(),\n    updated_at: isoNow()\n  };\n}\n\nexport function riskGreater(a, b) {\n  return (RISK_RANK.get(a) ?? 0) > (RISK_RANK.get(b) ?? 0);\n}\n\nexport function riskAtMost(a, ceiling) {\n  return (RISK_RANK.get(a) ?? 0) <= (RISK_RANK.get(ceiling) ?? 0);",
+          "endLine": 81,
+          "explanation": "rules propose saves a rule with status proposed; applyRules iterates it without checking status. The separate rules approve command has no effect on eligibility.",
+          "id": "sec-06-2",
+          "label": "Proposed rules are active before approval",
+          "path": "src/rules.js",
+          "startLine": 55
+        }
+      ],
+      "confidence": {
+        "level": "high",
+        "rationale": "Independent source trace; parent regression tests reproduce baseline failures and verify remediation."
+      },
+      "extensions": {
+        "baselineRevision": "e2140681bfef3ed02f1d09812c13c6ecd908d2df",
+        "impact": "Unreviewed inbound-derived classification and routing affect future items.",
+        "remediationStatus": "fixed-in-working-tree"
+      },
+      "findingId": "csf_e88ff88c0df7ddffcd1cc92e",
+      "fingerprints": {
+        "algorithm": "codex-security/v1",
+        "primary": "codex-security/v1:sha256:f9464b3babf2610115b20cbe677663d7801d9beea25280c922c2d0effef246ab"
+      },
+      "identity": {
+        "anchor": "intake.sec-06"
+      },
+      "locations": [
+        {
+          "endLine": 509,
+          "path": "src/cli.js",
+          "role": "root_control",
+          "startLine": 495
+        },
+        {
+          "endLine": 12,
+          "path": "src/rules.js",
+          "role": "sink",
+          "startLine": 10
+        },
+        {
+          "endLine": 81,
+          "path": "src/rules.js",
+          "role": "sink",
+          "startLine": 55
+        }
+      ],
+      "occurrenceId": "occ_820ef6f024f95cff89943985",
+      "provenance": {
+        "candidateId": "SEC-06",
+        "source": "local_plugin"
+      },
+      "remediation": "Skip explicitly nonapproved rules while preserving existing legacy rules with no status.",
+      "rootCause": {
+        "summary": "rules propose saves a rule with status proposed; applyRules iterates it without checking status. The separate rules approve command has no effect on eligibility."
+      },
+      "ruleId": "intake.sec-06",
+      "severity": {
+        "level": "medium",
+        "rationale": "Operator or agent proposes an inbound-derived rule and later classifies another matching item before review. Defaults and operator-controlled entry points limit likelihood."
+      },
+      "summary": "rules propose saves a rule with status proposed; applyRules iterates it without checking status. The separate rules approve command has no effect on eligibility.",
+      "taxonomy": {
+        "category": "authorization",
+        "cwe": [
+          "CWE-863"
+        ]
+      },
+      "title": "Proposed rules are active before approval",
+      "validation": {
+        "summary": "Proposal creation itself requires local operator execution; proposed rules do not lower existing risk and do not currently contain action blocks. Parent fixes and tests are documented in repository-hardening.md."
+      }
+    },
+    {
+      "attackPath": {
+        "dataflow": {
+          "summary": "restoreBackup verifies one decompression then decompresses again without validating that second object. Validation also accepts '.' and duplicate or file/parent-conflicting paths when their content checksums match. With force, target is deleted before extraction discovers such conflicts. Decompressed bytes are unbounded."
+        },
+        "reachability": {
+          "summary": "Operator restores a malformed/untrusted backup, or another local actor can replace it between reads. Force replacement is required for destruction of an existing target."
+        }
+      },
+      "codeEvidence": [
+        {
+          "code": "export async function restoreBackup(path, targetRoot, options = {}) {\n  const verification = await verifyBackup(path);\n  if (!verification.ok) {\n    throw new Error(`backup verification failed: ${verification.errors.join(\"; \")}`);\n  }\n  const backup = await readGzipJson(path);\n  await assertRestoreTarget(targetRoot, options.force === true);\n  if (options.force === true) await rm(targetRoot, { recursive: true, force: true });\n  for (const file of backup.files) {\n    const target = safeJoin(targetRoot, file.path);\n    await mkdir(dirname(target), { recursive: true });\n    await writeFile(target, Buffer.from(file.content_base64, \"base64\"));\n  }\n  await initStore(targetRoot);",
+          "endLine": 67,
+          "explanation": "restoreBackup verifies one decompression then decompresses again without validating that second object. Validation also accepts '.' and duplicate or file/parent-conflicting paths when their content checksums match. With force, target is deleted before extraction discovers such conflicts. Decompressed bytes are unbounded.",
+          "id": "sec-07-0",
+          "label": "Restore verifies a different read from the archive it consumes and mutates before complete validation",
+          "path": "src/backup.js",
+          "startLine": 54
+        },
+        {
+          "code": "function validateBackup(backup) {\n  const errors = [];\n  if (backup?.format !== BACKUP_FORMAT) errors.push(\"unsupported backup format\");\n  if (backup?.format_version !== BACKUP_FORMAT_VERSION) errors.push(\"unsupported backup format version\");\n  if (backup?.schema_version !== STORAGE_SCHEMA_VERSION) errors.push(`unsupported schema version ${backup?.schema_version}`);\n  if (!Array.isArray(backup?.files)) errors.push(\"missing files array\");\n  for (const file of backup?.files || []) {\n    if (!file.path || file.path.includes(\"..\") || file.path.startsWith(\"/\") || file.path.includes(\"\\\\\")) {\n      errors.push(`unsafe backup path ${file.path || \"(missing)\"}`);\n      continue;\n    }\n    const buffer = Buffer.from(file.content_base64 || \"\", \"base64\");\n    if (buffer.length !== file.size) errors.push(`size mismatch ${file.path}`);\n    if (sha256(buffer) !== file.sha256) errors.push(`checksum mismatch ${file.path}`);\n  }\n  return errors;\n}\n",
+          "endLine": 136,
+          "explanation": "restoreBackup verifies one decompression then decompresses again without validating that second object. Validation also accepts '.' and duplicate or file/parent-conflicting paths when their content checksums match. With force, target is deleted before extraction discovers such conflicts. Decompressed bytes are unbounded.",
+          "id": "sec-07-1",
+          "label": "Restore verifies a different read from the archive it consumes and mutates before complete validation",
+          "path": "src/backup.js",
+          "startLine": 119
+        },
+        {
+          "code": "async function readGzipJson(path) {\n  const chunks = [];\n  await pipeline(\n    createReadStream(path),\n    createGunzip(),\n    new Writable({\n      write(chunk, _encoding, callback) {\n        chunks.push(Buffer.from(chunk));\n        callback();\n      }\n    })\n  );\n  return JSON.parse(Buffer.concat(chunks).toString(\"utf8\"));\n}",
+          "endLine": 221,
+          "explanation": "restoreBackup verifies one decompression then decompresses again without validating that second object. Validation also accepts '.' and duplicate or file/parent-conflicting paths when their content checksums match. With force, target is deleted before extraction discovers such conflicts. Decompressed bytes are unbounded.",
+          "id": "sec-07-2",
+          "label": "Restore verifies a different read from the archive it consumes and mutates before complete validation",
+          "path": "src/backup.js",
+          "startLine": 207
+        }
+      ],
+      "confidence": {
+        "level": "high",
+        "rationale": "Independent source trace; parent regression tests reproduce baseline failures and verify remediation."
+      },
+      "extensions": {
+        "baselineRevision": "e2140681bfef3ed02f1d09812c13c6ecd908d2df",
+        "impact": "Unexpected unverified files can be restored; malformed archives can destroy a target then fail; compressed inputs can exhaust memory.",
+        "remediationStatus": "fixed-in-working-tree"
+      },
+      "findingId": "csf_df99eca10f8103830a7fa6a5",
+      "fingerprints": {
+        "algorithm": "codex-security/v1",
+        "primary": "codex-security/v1:sha256:23c00bc303549f17ab73da4d0b1d5ac1e03135931f9b5c2c3a28692df735b3d6"
+      },
+      "identity": {
+        "anchor": "intake.sec-07"
+      },
+      "locations": [
+        {
+          "endLine": 67,
+          "path": "src/backup.js",
+          "role": "root_control",
+          "startLine": 54
+        },
+        {
+          "endLine": 136,
+          "path": "src/backup.js",
+          "role": "sink",
+          "startLine": 119
+        },
+        {
+          "endLine": 221,
+          "path": "src/backup.js",
+          "role": "sink",
+          "startLine": 207
+        }
+      ],
+      "occurrenceId": "occ_93bbe81d356efcb65f1b0550",
+      "provenance": {
+        "candidateId": "SEC-07",
+        "source": "local_plugin"
+      },
+      "remediation": "Read once with a decompressed-byte bound, validate strict entry shape and canonical unique nonconflicting file paths, stage the full store before replacement, then restore exactly the validated bytes.",
+      "rootCause": {
+        "summary": "restoreBackup verifies one decompression then decompresses again without validating that second object. Validation also accepts '.' and duplicate or file/parent-conflicting paths when their content checksums match. With force, target is deleted before extraction discovers such conflicts. Decompressed bytes are unbounded."
+      },
+      "ruleId": "intake.sec-07",
+      "severity": {
+        "level": "medium",
+        "rationale": "Operator restores a malformed/untrusted backup, or another local actor can replace it between reads. Force replacement is required for destruction of an existing target. Defaults and operator-controlled entry points limit likelihood."
+      },
+      "summary": "restoreBackup verifies one decompression then decompresses again without validating that second object. Validation also accepts '.' and duplicate or file/parent-conflicting paths when their content checksums match. With force, target is deleted before extraction discovers such conflicts. Decompressed bytes are unbounded.",
+      "taxonomy": {
+        "category": "data-integrity",
+        "cwe": [
+          "CWE-367"
+        ]
+      },
+      "title": "Restore verifies a different read from the archive it consumes and mutates before complete validation",
+      "validation": {
+        "summary": "Lexical safeJoin prevents ordinary ../ writes outside the target. Archive is local operator-selected, not accepted by a network endpoint. Parent fixes and tests are documented in repository-hardening.md."
+      }
+    },
+    {
+      "attackPath": {
+        "dataflow": {
+          "summary": "Each run reads status, performs external execution, and only then saves executed. Two concurrent requests can both read approved and send/comment. Automatic budget counters use read-modify-write after execution and can similarly overrun caps."
+        },
+        "reachability": {
+          "summary": "Two authenticated calls or local processes run the same action or simultaneously consume the remaining auto budget."
+        }
+      },
+      "codeEvidence": [
+        {
+          "code": "export async function runAction(root, actionId) {\n  const action = await requireAction(root, actionId);\n  if (action.status === \"executed\") {\n    return action;\n  }\n  const item = await requireItem(root, action.intake_item_id);\n  const source = await sourceFor(root, item.source_id);\n  const settings = await loadSettings(root);\n  const policies = await loadPolicies(root);\n  const actionType = action.type === \"draft_response\" && source?.type === \"email\" ? \"append_remote_draft\" : action.type;\n  const policyResult = evaluatePolicy({ item, actionType, policies, settings, source });\n  if (policyResult.blocked || !policyResult.allowed) {\n    const blocked = {\n      ...action,\n      status: \"blocked\",\n      result: {\n        error: \"action is blocked by policy\",\n        policy_result: policyResult\n      }\n    };\n    await saveAction(root, blocked);\n    await logEvent(root, \"actions\", {\n      source_id: item.source_id,\n      item_id: item.id,\n      action_id: action.id,\n      event_type: \"action_policy_blocked\",\n      status: \"blocked\",\n      risk_level: item.risk_level,\n      policy_result: policyResult\n    });\n    return blocked;\n  }\n  if (action.status !== \"approved\" && !policyResult.auto_execute_allowed) {\n    const blocked = { ...action, status: \"blocked\", result: { error: \"action requires approval before execution\", policy_result: policyResult } };\n    await saveAction(root, blocked);\n    await logEvent(root, \"actions\", {\n      source_id: item.source_id,\n      item_id: item.id,\n      action_id: action.id,\n      event_type: \"action_blocked\",\n      status: \"blocked\",\n      risk_level: item.risk_level,\n      policy_result: policyResult\n    });\n    return blocked;\n  }\n  const autoExecuted = action.status !== \"approved\" && policyResult.auto_execute_allowed;\n\n  let result;\n  if (action.metadata?.demo_seed_id) {\n    result = { demo: true, dry_run: true, note: \"Demo action executed locally; no outbound email was sent or appended.\" };\n  } else if (action.type === \"draft_response\" && source?.type === \"email\") {\n    result = await executeAdapterAction(source, { ...action, type: \"append_remote_draft\" }, item);\n  } else if (action.type === \"send_response\") {\n    result = await executeAdapterAction(source, action, item);\n  } else if (action.type === \"comment_issue\") {\n    result = await executeAdapterAction(source, action, item);\n  } else if (action.type === \"mark_resolved\") {\n    await saveItem(root, { ...item, status: \"resolved\", queue: \"resolved\", updated_at: isoNow() });\n    result = { resolved: true };\n  } else if (action.type === \"create_learning\") {\n    const learning = await createLearning(root, item.id);\n    result = { learning_id: learning.id };\n  } else {\n    result = { dry_run: true, note: `No adapter executor for ${action.type}; recorded as executed local action.` };\n  }\n  const next = { ...action, status: \"executed\", executed_at: isoNow(), result };\n  await saveAction(root, next);\n  if (autoExecuted) {\n    await saveSettings(root, { ...settings, action_counters: nextActionCounters(settings, actionType), updated_at: isoNow() });\n  }\n  await logEvent(root, \"actions\", {\n    source_id: item.source_id,\n    item_id: item.id,\n    action_id: action.id,\n    event_type: \"action_executed\",",
+          "endLine": 276,
+          "explanation": "Each run reads status, performs external execution, and only then saves executed. Two concurrent requests can both read approved and send/comment. Automatic budget counters use read-modify-write after execution and can similarly overrun caps.",
+          "id": "sec-08-0",
+          "label": "Concurrent action runs can duplicate outbound side effects",
+          "path": "src/workflow.js",
+          "startLine": 201
+        },
+        {
+          "code": "}\n\nasync function mutateAction(root, actionId, action, body = {}) {\n  if (action === \"approve\") return { action: await approveAction(root, actionId, \"dashboard\") };",
+          "endLine": 315,
+          "explanation": "Each run reads status, performs external execution, and only then saves executed. Two concurrent requests can both read approved and send/comment. Automatic budget counters use read-modify-write after execution and can similarly overrun caps.",
+          "id": "sec-08-1",
+          "label": "Concurrent action runs can duplicate outbound side effects",
+          "path": "src/dashboard.js",
+          "startLine": 312
+        },
+        {
+          "code": "}\n\nexport function nextActionCounters(settings, actionType, now = new Date()) {\n  const counters = settings.action_counters || {};\n  const hourKey = now.toISOString().slice(0, 13);\n  const dayKey = now.toISOString().slice(0, 10);\n  const current = counters[actionType] || {};\n  return {\n    ...counters,\n    [actionType]: {\n      hour_key: hourKey,\n      hour_count: current.hour_key === hourKey ? Number(current.hour_count || 0) + 1 : 1,\n      day_key: dayKey,\n      day_count: current.day_key === dayKey ? Number(current.day_count || 0) + 1 : 1\n    }\n  };\n}\n\nfunction autoActionBudget(settings, policy) {\n  const counters = settings.action_counters || {};\n  const now = new Date();\n  const hourKey = now.toISOString().slice(0, 13);\n  const dayKey = now.toISOString().slice(0, 10);\n  const maxHour = Number(policy.max_auto_actions_per_hour || 0);\n  const maxDay = Number(policy.max_auto_actions_per_day || 0);\n  if (maxHour <= 0 && maxDay <= 0) return { allowed: true, hour_remaining: null, day_remaining: null };\n  let hourUsed = 0;\n  let dayUsed = 0;\n  for (const counter of Object.values(counters)) {\n    if (counter.hour_key === hourKey) hourUsed += Number(counter.hour_count || 0);\n    if (counter.day_key === dayKey) dayUsed += Number(counter.day_count || 0);\n  }\n  if (maxHour > 0 && hourUsed >= maxHour) return { allowed: false, reason: \"hourly auto-action budget exhausted\", hour_remaining: 0, day_remaining: maxDay > 0 ? Math.max(0, maxDay - dayUsed) : null };\n  if (maxDay > 0 && dayUsed >= maxDay) return { allowed: false, reason: \"daily auto-action budget exhausted\", hour_remaining: maxHour > 0 ? Math.max(0, maxHour - hourUsed) : null, day_remaining: 0 };\n  return {\n    allowed: true,\n    hour_remaining: maxHour > 0 ? Math.max(0, maxHour - hourUsed) : null,\n    day_remaining: maxDay > 0 ? Math.max(0, maxDay - dayUsed) : null\n  };\n}\n\nfunction policyApplies(policy, item) {\n  const sources = policy.applies_to_sources || [\"*\"];\n  const categories = policy.applies_to_categories || [\"*\"];\n  return (\n    (sources.includes(\"*\") || sources.includes(item.source_id) || sources.includes(item.source_type)) &&\n    (categories.includes(\"*\") || categories.includes(item.category))\n  );\n}",
+          "endLine": 96,
+          "explanation": "Each run reads status, performs external execution, and only then saves executed. Two concurrent requests can both read approved and send/comment. Automatic budget counters use read-modify-write after execution and can similarly overrun caps.",
+          "id": "sec-08-2",
+          "label": "Concurrent action runs can duplicate outbound side effects",
+          "path": "src/policy.js",
+          "startLine": 46
+        }
+      ],
+      "confidence": {
+        "level": "high",
+        "rationale": "Independent source trace; parent regression tests reproduce baseline failures and verify remediation."
+      },
+      "extensions": {
+        "baselineRevision": "e2140681bfef3ed02f1d09812c13c6ecd908d2df",
+        "impact": "Duplicate outward messages and exceeded configured rate limits.",
+        "remediationStatus": "fixed-in-working-tree"
+      },
+      "findingId": "csf_3a93d0493cfd0b5acf141184",
+      "fingerprints": {
+        "algorithm": "codex-security/v1",
+        "primary": "codex-security/v1:sha256:8c032256d230fb10e082067adf99ab986f8ff74ef982f45b8a9c84328fb3a52d"
+      },
+      "identity": {
+        "anchor": "intake.sec-08"
+      },
+      "locations": [
+        {
+          "endLine": 276,
+          "path": "src/workflow.js",
+          "role": "root_control",
+          "startLine": 201
+        },
+        {
+          "endLine": 315,
+          "path": "src/dashboard.js",
+          "role": "sink",
+          "startLine": 312
+        },
+        {
+          "endLine": 96,
+          "path": "src/policy.js",
+          "role": "sink",
+          "startLine": 46
+        }
+      ],
+      "occurrenceId": "occ_e3e4859b3965902f8ad61374",
+      "provenance": {
+        "candidateId": "SEC-08",
+        "source": "local_plugin"
+      },
+      "remediation": "Serialize execution and budget reservations per store across supported processes, re-read status under lock, and explicitly handle crash ambiguity without claiming exactly-once network delivery.",
+      "rootCause": {
+        "summary": "Each run reads status, performs external execution, and only then saves executed. Two concurrent requests can both read approved and send/comment. Automatic budget counters use read-modify-write after execution and can similarly overrun caps."
+      },
+      "ruleId": "intake.sec-08",
+      "severity": {
+        "level": "medium",
+        "rationale": "Two authenticated calls or local processes run the same action or simultaneously consume the remaining auto budget. Defaults and operator-controlled entry points limit likelihood."
+      },
+      "summary": "Each run reads status, performs external execution, and only then saves executed. Two concurrent requests can both read approved and send/comment. Automatic budget counters use read-modify-write after execution and can similarly overrun caps.",
+      "taxonomy": {
+        "category": "data-integrity",
+        "cwe": [
+          "CWE-362"
+        ]
+      },
+      "title": "Concurrent action runs can duplicate outbound side effects",
+      "validation": {
+        "summary": "Sequential reruns return the executed record. API is authenticated; this does not independently give outsiders run access. Parent fixes and tests are documented in repository-hardening.md."
+      }
+    },
+    {
+      "attackPath": {
+        "dataflow": {
+          "summary": "syncFileSource uses stat, which follows symlinks, then readFile. A drop-folder entry named with a supported extension can point outside the folder and be imported as inbound content."
+        },
+        "reachability": {
+          "summary": "A less-trusted actor can add symlinks to the configured drop directory but cannot read a file the Intake account can read."
+        }
+      },
+      "codeEvidence": [
+        {
+          "code": "  if (!folder) throw new Error(`file source ${source.id} is missing config.path`);\n  const names = await readdir(folder);\n  const seen = new Set(source.cursor?.seen || []);\n  const items = [];\n\n  for (const name of names.sort()) {\n    const path = join(folder, name);\n    let info;\n    try {\n      info = await stat(path);\n    } catch (error) {\n      if (error?.code === \"ENOENT\") continue;\n      await logSkippedFile(root, source, name, error);\n      continue;\n    }\n    if (!info.isFile()) continue;\n    const ext = extname(name).toLowerCase();\n    if (!SUPPORTED.has(ext)) continue;\n    const nativeId = `${name}:${info.mtimeMs}:${info.size}`;\n    if (seen.has(nativeId)) continue;\n    try {\n      const buffer = await readFile(path);",
+          "endLine": 38,
+          "explanation": "syncFileSource uses stat, which follows symlinks, then readFile. A drop-folder entry named with a supported extension can point outside the folder and be imported as inbound content.",
+          "id": "sec-09-0",
+          "label": "File-drop symlinks cross the inbound filesystem boundary",
+          "path": "src/adapters/file.js",
+          "startLine": 17
+        }
+      ],
+      "confidence": {
+        "level": "high",
+        "rationale": "Independent source trace; parent regression tests reproduce baseline failures and verify remediation."
+      },
+      "extensions": {
+        "baselineRevision": "e2140681bfef3ed02f1d09812c13c6ecd908d2df",
+        "impact": "Intake copies the target into raw/items and can submit its content to an enabled AI provider.",
+        "remediationStatus": "fixed-in-working-tree"
+      },
+      "findingId": "csf_077aa9a93eeb0ad8641c6d0b",
+      "fingerprints": {
+        "algorithm": "codex-security/v1",
+        "primary": "codex-security/v1:sha256:c8630657bd31a2fdeeb3398447ac91340ee733a0620221ce5dbf64b1f9f984cc"
+      },
+      "identity": {
+        "anchor": "intake.sec-09"
+      },
+      "locations": [
+        {
+          "endLine": 38,
+          "path": "src/adapters/file.js",
+          "role": "root_control",
+          "startLine": 17
+        }
+      ],
+      "occurrenceId": "occ_f7b94796e19e78675b20829a",
+      "provenance": {
+        "candidateId": "SEC-09",
+        "source": "local_plugin"
+      },
+      "remediation": "Reject symlink entries and use no-follow file handles with regular-file checks; bound file size before buffering.",
+      "rootCause": {
+        "summary": "syncFileSource uses stat, which follows symlinks, then readFile. A drop-folder entry named with a supported extension can point outside the folder and be imported as inbound content."
+      },
+      "ruleId": "intake.sec-09",
+      "severity": {
+        "level": "medium",
+        "rationale": "A less-trusted actor can add symlinks to the configured drop directory but cannot read a file the Intake account can read. Defaults and operator-controlled entry points limit likelihood."
+      },
+      "summary": "syncFileSource uses stat, which follows symlinks, then readFile. A drop-folder entry named with a supported extension can point outside the folder and be imported as inbound content.",
+      "taxonomy": {
+        "category": "data-integrity",
+        "cwe": [
+          "CWE-59"
+        ]
+      },
+      "title": "File-drop symlinks cross the inbound filesystem boundary",
+      "validation": {
+        "summary": "Directory path is operator configured; exploitation requires writable local/drop filesystem access, not merely a JSON payload. Parent fixes and tests are documented in repository-hardening.md."
+      }
+    }
+  ],
+  "scanId": "intake-hardening-20260926",
+  "schemaVersion": "1.0",
+  "threatModel": {
+    "assets": [
+      "Business message bodies, author identities, raw source payloads, attachments, classifications, actions, approvals and learnings under the configured state root (src/storage.js:12-27,102-103,158-159,181-182).",
+      "Mailbox credentials, webhook/signing secrets, GitHub API tokens and AI API keys. References resolve from process environment or the macOS Keychain; Keychain reads use execFileSync with argument arrays (src/secrets.js:27-65). Legacy inline receiver/API secrets also remain accepted (src/adapters/webhook.js:43; src/adapters/slack.js:60; src/adapters/issues.js:64,107).",
+      "Operator dashboard bearer authority, which protects data access and administrative mutations through one shared token rather than distinct user roles (src/dashboard.js:102-113,701-704).",
+      "Outbound authority to send email, append an IMAP draft and comment on GitHub issues; policy configuration, global auto-action state, approval records and counters determine execution eligibility (src/workflow.js:201-270).",
+      "Backups and Strata/TotalRecall exports contain business records and require filesystem confidentiality outside the application (src/backup.js:14-29,84-115; src/exports.js:6-18,25-62)."
+    ],
+    "assumptions": [
+      "This is an offline architecture review, not completed security-audit coverage. No application execution, external services, live configuration or credential material was used.",
+      "The ordinary deployment is a trusted local operator account. No multi-user/tenant security boundary or deployed internet exposure was established.",
+      "CLI dotenv discovery differs from state-root resolution: files are computed as join(cwd,'.env') and join(cwd,preexisting INTAKE_DIR || '.intake','.env') before CLI --dir parsing. Consequently --dir does not choose the dotenv directory; an INTAKE_DIR introduced by the first dotenv file does not change the already-built second path (bin/intake.js:5-6; src/secrets.js:5-7; src/cli.js:60-61). Absolute INTAKE_DIR behavior should be checked against Node path.join semantics, rather than assumed to read <absolute INTAKE_DIR>/.env.",
+      "docs/security-model.md:6 describes secrets through environment references, but runtime additionally supports macOS Keychain and inline receiver/API credentials (src/secrets.js:35-38; src/adapters/webhook.js:43; src/adapters/slack.js:60; src/adapters/issues.js:107). Default backup exclusions cover .env and secrets/, not inline credentials residing in config JSON (src/backup.js:110-115).",
+      "docs/security-model.md:13 says approval is required for risky/outbound actions. evaluatePolicy computes requires_human_review separately from auto_execute_allowed, whose expression does not include that review flag (src/policy.js:13-33). The parent should validate the precise supported configuration and reachable consequence before calling this a finding.",
+      "Quarantine is opt-in and is storage containment, not malware scanning (src/attachments.js:7-28). Filesystem ACLs, encryption at rest, reverse-proxy controls, credential scopes and downstream import review are outside the inspected implementation.",
+      "AI HTTPS acceptance and the explicit insecure-localhost escape hatch are string-prefix based; exact URL parsing and recipient restrictions require focused validation (src/ai.js:134-144)."
+    ],
+    "attackerCapabilities": [
+      "An external sender may submit adversarial message text and attachments through a configured source; this does not imply possession of dashboard credentials, process environment, filesystem ownership or outbound API credentials.",
+      "A local network client can contact loopback receivers but must satisfy the relevant token/signature control. Internet reachability requires an external forwarding/tunnel arrangement not established by inspected source.",
+      "A website may induce browser requests to the local dashboard, but token authentication rather than ambient cookies is the inspected control. A token holder already has operator authority; arbitrary configuration changes by that same holder are not automatically a privilege escalation.",
+      "A supplier of an archive or file-drop message can control its content when an operator imports it. Backup restore and export target choices belong to the operator, so security impact requires a malformed-input escape, unauthorized disclosure, or capability beyond the operator's intended import.",
+      "A compromised AI endpoint can return classifier suggestions and receives message content when enabled. It does not obtain a direct adapter execution interface from the inspected classifier response handling (src/ai.js:74-106; src/workflow.js:123-134)."
+    ],
+    "securityObjectives": [
+      "Preserve compatibility while keeping inbound content as data, retaining source authentication and preventing unauthorized dashboard access.",
+      "Keep local-default services loopback-bound and enforce explicit TLS/token requirements for the supported non-local dashboard deployment (src/dashboard.js:67-83).",
+      "Prevent message/provider output from bypassing action permissions, required review, the default-disabled global auto-action switch or configured rate budgets (src/policy.js:3-44,64-84; src/storage.js:433-437).",
+      "Bind operator approval meaningfully to the action body, type and external destination; independently inspect mutable approval state and concurrency rather than assuming source authentication supplies approval.",
+      "Keep sensitive state, quarantine reads and restored content within intended filesystem locations, preserve credential references without disclosure, and keep backup/export recipients explicit.",
+      "Honor documented encrypted-mail, no-attachment-execution and approval guarantees, while distinguishing enforced controls from deployment assumptions (docs/security-model.md:5-13)."
+    ],
+    "summary": "Intake is a local-first Node.js operator application. bin/intake.js:2-6 loads dotenv files before CLI argument parsing; src/cli.js:59-103 dispatches initialization, sync/watch, dashboard, action approval/execution, configuration import/export, backups, retention and memory exports. Sources normalize external messages into JSON records, raw payloads and indexes, followed by rules, safety classification and optional AI (src/workflow.js:37-81,91-118). State root precedence is --dir, INTAKE_DIR, then cwd-relative .intake (src/storage.js:8-27; src/constants.js:2). Dashboard normally binds 127.0.0.1:8787; explicit non-local deployment requires opt-in, TLS and a supplied token of at least 20 characters (src/dashboard.js:65-83). Watch starts the first matching webhook/Slack/issues receiver, otherwise polls sources (src/cli.js:312-327).",
+    "trustBoundaries": [
+      "Remote message senders control message content, and authenticated webhook clients control accepted JSON payloads. Receiver authentication precedes normalization and state writes. Generic webhook requires a constant-time bearer/query-token comparison; Slack requires timestamped HMAC; issues accept GitHub HMAC when supplied or bearer/header/query token otherwise. All receiver implementations bind loopback (src/adapters/webhook.js:40-75; src/adapters/slack.js:57-115; src/adapters/issues.js:61-96,130-135).",
+      "Browser or HTTP client to dashboard: landing HTML and health are public, while API routes require a token supplied in Authorization, x-intake-token or query parameters. Non-local dashboard startup has separate opt-in/TLS/token constraints. The HTML sends CSP/frame protections; API replies use no-store and nosniff (src/dashboard.js:65-103,701-723). Token-bearing clients have operator authority, including source/settings and action workflows; there is no inspected evidence of tenant isolation.",
+      "External content to action execution: rules and safety checks run before optional AI; AI suggestions can modify tags/category/queue, increase risk and require review. AI output is not directly executed (src/workflow.js:91-134). runAction re-evaluates current policy and source permissions, then requires approval unless auto_execute_allowed; email drafts become remote IMAP writes, send_response and comment_issue invoke adapters (src/workflow.js:201-257).",
+      "Operator configuration to credential recipients: email source settings choose IMAP/SMTP hosts, defaulting to mail.privateemail.com:993 and :465; source.secret_ref supplies the password (src/adapters/email.js:172-231). AI settings or environment choose a base URL and environment key reference, and classification sends message title/body plus bearer credentials to that base URL with /chat/completions appended (src/ai.js:69-101,112-144). These are trusted operator-controlled destinations, not sender-controlled configuration.",
+      "Approved action to external audience: email destination comes from item.author_email and body from action.body (src/adapters/email.js:75-87); GitHub repository prefers item.metadata.project over source.config.repository, with numeric issue and owner/name validation (src/adapters/issues.js:104-121). Approval currently records status/by/time rather than a payload/destination digest (src/workflow.js:179-186); dashboard edits preserve prior approval fields and can retain approved status (src/dashboard.js:322-338). This is an approval-binding investigation surface, not an independently confirmed exploit.",
+      "Filesystem paths to sensitive reads/writes: record IDs are validated before state writes, and attachment quarantine filenames use validated source/item IDs and hashed names. Attachment download checks a lexical raw/attachments boundary and size before reading (src/storage.js:102-103,158-159,181-182; src/attachments.js:21-28,45-63). Host filesystem ownership remains a prerequisite; lexical checks do not establish isolation from a principal that can modify the state tree.",
+      "Operator-imported backup to filesystem: restore verifies manifest format, version, path spelling, sizes and SHA-256, then optionally removes the selected target and writes files under a lexical safeJoin boundary. Import provenance is trusted operationally; checksums do not authenticate the archive author (src/backup.js:40-65,119-155)."
+    ]
+  }
+}

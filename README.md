@@ -67,6 +67,8 @@ npm link
 intake init
 ```
 
+Requires Node.js 20.19.0 or newer (matching the locked email parser dependencies).
+
 Without `npm link`, run commands through Node:
 
 ```sh
@@ -428,3 +430,18 @@ docs/               Architecture, setup, security, and roadmap docs
 ```
 
 There are no required root-level runtime files outside `bin/`, `src/`, `tests/`, `docs/`, `.github/`, `README.md`, `CHANGELOG.md`, `package.json`, and `package-lock.json`.
+
+
+### Hardening and operational limits
+
+The [repository hardening audit](docs/audits/repository-hardening.md) records the baseline, fixes, measurements, verification and remaining work.
+
+Automatic execution requires a matching policy, sufficient confidence, no rule veto and no outstanding human-review requirement. Rejected actions stay rejected. Proposed rules do not affect classification until approved; legacy rules without a status remain active. Editing an approved action's body or type resets its approval.
+
+Action execution is serialized per store, including across processes. Interrupted or failed execution is marked `executing` or `execution_uncertain`; reconcile the external effect before explicitly approving a retry. If `.action-lock` remains after a crash, stop writers and reconcile the affected actions before removing it. Automatic budgets reserve an attempt before execution and therefore include uncertain attempts. This prevents blind retries; it does not promise exactly-once delivery at external providers.
+
+Use one writer process per store for general ingestion and configuration, and stop writers during backup, restore, retention and purge. Index updates and dashboard mutations are serialized within one process; the filesystem format does not provide general multi-process transactions.
+
+Default backups omit inline `token`, `api_token` and `signing_secret` fields as well as `.env` and `secrets/`. Restore secret references through the environment or Keychain; use `--include-secrets` only when intentionally preserving inline credentials in a protected archive. Verification and restore limit decompressed archives to 256 MiB; `--max-bytes N` explicitly raises that limit for larger trusted archives. Restore validates and stages the complete store before replacing the destination. File-drop sources accept regular files and skip symbolic links.
+
+`npm run bench:logs` measures a 200-row page from 100,000 audit events. It checks the returned rows and reports timings; the regular benchmark gate also covers log paging. Detailed log records remain available through pagination and the JSONL files.

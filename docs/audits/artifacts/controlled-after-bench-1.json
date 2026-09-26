@@ -1,0 +1,62 @@
+{
+  "root": "/var/folders/wb/0cck3lgd08n55g_8ly9qmf_00000gn/T/intake-bench-CBvANe",
+  "items": 500,
+  "logs": 1000,
+  "fileRows": 250,
+  "actions": 500,
+  "learnings": 500,
+  "timings_ms": [
+    {
+      "name": "insert_500_items",
+      "ms": 2176
+    },
+    {
+      "name": "read_index_page_100",
+      "ms": 321
+    },
+    {
+      "name": "insert_500_actions",
+      "ms": 1580
+    },
+    {
+      "name": "insert_500_learnings",
+      "ms": 1466
+    },
+    {
+      "name": "write_1000_audit_logs",
+      "ms": 765
+    },
+    {
+      "name": "sync_250_file_rows",
+      "ms": 2874
+    },
+    {
+      "name": "sync_repeated_dedupe",
+      "ms": 109
+    },
+    {
+      "name": "dashboard_logs_page_200_warm",
+      "ms": 18
+    },
+    {
+      "name": "dashboard_summary_warm",
+      "ms": 40
+    },
+    {
+      "name": "dashboard_items_page_100_warm",
+      "ms": 12
+    },
+    {
+      "name": "dashboard_actions_page_100_warm",
+      "ms": 64
+    },
+    {
+      "name": "dashboard_learnings_page_100_warm",
+      "ms": 133
+    },
+    {
+      "name": "dashboard_approval_audit_warm",
+      "ms": 185
+    }
+  ]
+}
