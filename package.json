@@ -44,7 +44,8 @@
     "bench:logs": "node scripts/bench-logs.mjs",
     "bench:gate": "node scripts/bench-threshold.mjs",
     "release:check": "npm run verify && node bin/intake.js shipcheck && node bin/intake.js doctor --json && npm pack --dry-run",
-    "intake": "node bin/intake.js"
+    "intake": "node bin/intake.js",
+    "test:browser": "node scripts/browser-test.mjs"
   },
   "dependencies": {
     "@tabler/icons": "^3.44.0",
@@ -59,5 +60,8 @@
     "agents",
     "workflow"
   ],
-  "license": "MIT"
+  "license": "MIT",
+  "devDependencies": {
+    "@playwright/test": "^1.63.0"
+  }
 }
