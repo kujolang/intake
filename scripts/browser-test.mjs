@@ -16,14 +16,16 @@ try {
  const errors=[];page.on('pageerror',error=>errors.push(error.message));
  await page.goto(dashboard.url);
  await page.getByRole('button',{name:'Settings',exact:true}).click();
- await page.getByRole('button',{name:'Rotate token',exact:true}).click();
+ const [rotated]=await Promise.all([page.waitForResponse(response=>response.url().endsWith('/api/dashboard-token/rotate')),page.getByRole('button',{name:'Rotate token',exact:true}).click()]);
+ assert.equal(rotated.status(),200);
  await page.waitForFunction(()=>sessionStorage.getItem('intakeToken') && sessionStorage.getItem('intakeToken')!=='browser-regression-original-token');
  assert.equal(new URL(page.url()).searchParams.has('token'),false);
  const token=await page.evaluate(()=>sessionStorage.getItem('intakeToken'));
  const base=new URL(dashboard.url).origin;
  assert.equal((await fetch(`${base}/api/settings`,{headers:{'x-intake-token':'browser-regression-original-token'}})).status,401);
  assert.equal((await fetch(`${base}/api/settings`,{headers:{'x-intake-token':token}})).status,200);
- await page.getByRole('button',{name:'Save settings',exact:true}).click();
+ const [saved]=await Promise.all([page.waitForResponse(response=>response.url().endsWith('/api/settings/update')),page.getByRole('button',{name:'Save settings',exact:true}).click()]);
+ assert.equal(saved.status(),200);
  await page.reload();
  await page.getByRole('button',{name:'Settings',exact:true}).click();
  await page.getByRole('button',{name:'Rotate token',exact:true}).waitFor();
