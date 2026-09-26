@@ -1,3 +1,4 @@
+import { withStoreLock } from "./store-lock.js";
 import { mkdir, readdir, readFile, rm, stat } from "node:fs/promises";
 import { dirname, join, relative, resolve, sep } from "node:path";
 import {
@@ -15,6 +16,10 @@ import { isoNow, writeTextAtomic } from "./util.js";
 const LOG_NAMES = ["sync", "normalize", "classify", "policy", "actions", "audit", "errors"];
 
 export async function applyRetention(root, options = {}) {
+  return withStoreLock(root, () => applyRetentionLocked(root, options));
+}
+
+async function applyRetentionLocked(root, options = {}) {
   const dryRun = options.dryRun === true;
   const result = {
     ok: true,
@@ -37,6 +42,10 @@ export async function applyRetention(root, options = {}) {
 }
 
 export async function purgeItems(root, filters = {}) {
+  return withStoreLock(root, () => purgeItemsLocked(root, filters));
+}
+
+async function purgeItemsLocked(root, filters = {}) {
   const dryRun = filters.dryRun === true;
   const matched = await matchingItems(root, filters);
   if (!filters.force && !dryRun) {

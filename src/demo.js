@@ -1,3 +1,4 @@
+import { withStoreLock } from "./store-lock.js";
 import { mkdir, readdir, unlink } from "node:fs/promises";
 import { join } from "node:path";
 import { makeLearning, makeItem, makeSource } from "./models.js";
@@ -21,6 +22,10 @@ const DEMO_SOURCE_ID = "demo-email-acme-support";
 const DEMO_ITEM_ID = "demo_email_acme_privateemail_setup";
 
 export async function seedEmailDemo(root) {
+  return withStoreLock(root, () => seedEmailDemoLocked(root));
+}
+
+async function seedEmailDemoLocked(root) {
   await initStore(root);
   await upsertDemoSource(root);
   const item = await upsertDemoItem(root);
@@ -44,6 +49,10 @@ export async function seedEmailDemo(root) {
 }
 
 export async function clearDemo(root) {
+  return withStoreLock(root, () => clearDemoLocked(root));
+}
+
+async function clearDemoLocked(root) {
   await initStore(root);
   const beforeSources = await loadSources(root);
   await saveSources(root, beforeSources.filter((source) => source.metadata?.demo_seed_id !== DEMO_SEED_ID && source.id !== DEMO_SOURCE_ID));

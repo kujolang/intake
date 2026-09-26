@@ -1,9 +1,14 @@
+import { withStoreLock } from "./store-lock.js";
 import { mkdir } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { dateOnly, writeJsonAtomic, writeTextAtomic } from "./util.js";
 import { listItems, listLearnings, loadSettings, logEvent, saveLearning } from "./storage.js";
 
 export async function exportStrataDaily(root, options = {}) {
+  return withStoreLock(root, () => exportStrataDailyLocked(root, options));
+}
+
+async function exportStrataDailyLocked(root, options = {}) {
   const day = options.date || dateOnly();
   const settings = await loadSettings(root);
   const items = await listItems(root);
@@ -23,6 +28,10 @@ export async function exportStrataDaily(root, options = {}) {
 }
 
 export async function exportTotalRecall(root, options = {}) {
+  return withStoreLock(root, () => exportTotalRecallLocked(root, options));
+}
+
+async function exportTotalRecallLocked(root, options = {}) {
   const day = options.date || dateOnly();
   const settings = await loadSettings(root);
   const items = await listItems(root);

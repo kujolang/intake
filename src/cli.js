@@ -1,3 +1,4 @@
+import { withStoreLock, recoverStoreLock } from "./store-lock.js";
 import { readFile, writeFile } from "node:fs/promises";
 import { testSource } from "./adapters/index.js";
 import { createBackup, restoreBackup, verifyBackup } from "./backup.js";
@@ -57,6 +58,22 @@ import {
 import { assertSafeId, isoNow, parseCsv } from "./util.js";
 
 export async function main(argv) {
+  const { flags, positionals } = parseArgs(argv);
+  const root = resolveIntakeDir(flags);
+  if (positionals[0] === "store" && positionals[1] === "recover") {
+    return printJson(await recoverStoreLock(root, async () => {
+      await initStore(root);
+      await rebuildItemIndex(root);
+      await rebuildActionIndex(root);
+      await rebuildLearningIndex(root);
+      return { ok: true, recovered: root, note: "Indexes rebuilt; reconcile executing or uncertain actions before retrying." };
+    }, { force: flags.force === true }));
+  }
+  if (!positionals[0] || flags.help || ["watch", "dashboard", "version", "--version", "onboarding", "templates", "eval", "backup"].includes(positionals[0])) return mainLocked(argv);
+  return withStoreLock(root, () => mainLocked(argv));
+}
+
+async function mainLocked(argv) {
   const parsed = parseArgs(argv);
   const root = resolveIntakeDir(parsed.flags);
   const [command, subcommand, third] = parsed.positionals;
@@ -739,6 +756,7 @@ function help() {
     "  intake backup restore BACKUP_PATH [--target DIR] [--force]",
     "  intake retention apply [--raw-days N] [--logs-days N] [--dry-run]",
     "  intake purge items [--item ID | --source ID | --status STATUS | --queue QUEUE | --before DATE] [--dry-run | --force]",
+    "  intake store recover [--force]  (repair indexes after an exited writer)",
     "  intake doctor",
     "  intake dashboard [--port 8787] [--token TOKEN]",
     "  intake demo seed email",

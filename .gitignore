@@ -148,3 +148,7 @@ coverage/
 # /fence.toml
 # /.lens.toml
 # /packwrite.toml
+
+# Cross-process store ownership and recovery state
+*.intake-lock
+*.intake-recovery/

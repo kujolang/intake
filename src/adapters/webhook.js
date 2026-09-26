@@ -1,3 +1,4 @@
+import { withStoreLock } from "../store-lock.js";
 import { createServer } from "node:http";
 import { makeItem } from "../models.js";
 import { resolveSecretRef } from "../secrets.js";
@@ -58,10 +59,13 @@ export async function startWebhookServer(root, source, options = {}) {
         return;
       }
       const payload = JSON.parse(await readStreamText(req, { maxBytes: MAX_WEBHOOK_BODY_BYTES, label: "webhook request body" }));
-      const item = await normalizeWebhookPayload(root, source, payload);
-      await saveItem(root, item);
-      await classifyAndSave(root, item.id);
-      await logEvent(root, "sync", { source_id: source.id, item_id: item.id, event_type: "webhook_received" });
+      const item = await withStoreLock(root, async () => {
+        const item = await normalizeWebhookPayload(root, source, payload);
+        await saveItem(root, item);
+        await classifyAndSave(root, item.id);
+        await logEvent(root, "sync", { source_id: source.id, item_id: item.id, event_type: "webhook_received" });
+        return item;
+      });
       res.writeHead(202, { "content-type": "application/json" });
       res.end(JSON.stringify({ ok: true, item_id: item.id }));
     } catch (error) {

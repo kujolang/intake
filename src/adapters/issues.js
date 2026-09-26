@@ -1,3 +1,4 @@
+import { withStoreLock } from "../store-lock.js";
 import { createHmac } from "node:crypto";
 import { createServer } from "node:http";
 import { makeItem } from "../models.js";
@@ -79,10 +80,13 @@ export async function startIssueWebhookServer(root, source, options = {}) {
         return;
       }
       const payload = JSON.parse(raw);
-      const item = await normalizeIssuePayload(root, source, payload);
-      await saveItem(root, item);
-      await classifyAndSave(root, item.id);
-      await logEvent(root, "sync", { source_id: source.id, item_id: item.id, event_type: `${source.type}_webhook_received` });
+      const item = await withStoreLock(root, async () => {
+        const item = await normalizeIssuePayload(root, source, payload);
+        await saveItem(root, item);
+        await classifyAndSave(root, item.id);
+        await logEvent(root, "sync", { source_id: source.id, item_id: item.id, event_type: `${source.type}_webhook_received` });
+        return item;
+      });
       res.writeHead(202, { "content-type": "application/json" });
       res.end(JSON.stringify({ ok: true, item_id: item.id }));
     } catch (error) {

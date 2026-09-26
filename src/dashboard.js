@@ -1,8 +1,9 @@
+import { withStoreLock } from "./store-lock.js";
 import { randomBytes } from "node:crypto";
 import { createServer as createHttpServer } from "node:http";
 import { createServer as createHttpsServer } from "node:https";
 import { readFileSync } from "node:fs";
-import { join, resolve } from "node:path";
+import { join } from "node:path";
 import { attachmentInventory, readQuarantinedAttachment } from "./attachments.js";
 import { testSource } from "./adapters/index.js";
 import { AI_PROVIDER_PRESETS } from "./ai.js";
@@ -14,7 +15,7 @@ import { initStore, listActionIndex, listActions, listItemIndex, listLearningInd
 import { evaluatePolicy } from "./policy.js";
 import { appendSourceSyncHistory, appendSourceTestHistory } from "./source-history.js";
 import { approveAction, classifyAndSave, createLearning, proposeDraft, rejectAction, runAction, setAutoActions, syncAll } from "./workflow.js";
-import { isoNow, parseCsv, readStreamText, serializeWrite, timingSafeEqualString, uniq } from "./util.js";
+import { isoNow, parseCsv, readStreamText, timingSafeEqualString, uniq } from "./util.js";
 
 const LOGS = ["sync", "normalize", "classify", "policy", "actions", "audit", "errors"];
 const MAX_DASHBOARD_BODY_BYTES = 1024 * 1024;
@@ -112,7 +113,7 @@ export async function startDashboard(root, options = {}) {
           return activeToken;
         }
       });
-      const result = req.method === "GET" ? await route() : await serializeWrite(resolve(root, ".dashboard-mutations"), route);
+      const result = await withStoreLock(root, route);
       return sendJson(res, result);
     } catch (error) {
       await logEvent(root, "errors", { event_type: "dashboard_error", status: "failed", error: error.message });

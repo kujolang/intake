@@ -1,3 +1,4 @@
+import { withStoreLock } from "./store-lock.js";
 import { withActionLock } from "./action-lock.js";
 import { executeAdapterAction, syncSource } from "./adapters/index.js";
 import { aiUnavailableResult, classifyWithAi, deterministicSummary, draftFallback } from "./ai.js";
@@ -25,6 +26,10 @@ import { appendSourceSyncHistory } from "./source-history.js";
 import { isoNow, uniq } from "./util.js";
 
 export async function syncAll(root, sourceId = null) {
+  return withStoreLock(root, () => syncAllLocked(root, sourceId));
+}
+
+async function syncAllLocked(root, sourceId = null) {
   const sources = await loadSources(root);
   const selected = sources.filter((source) => source.enabled && (!sourceId || source.id === sourceId));
   const out = [];
@@ -36,39 +41,46 @@ export async function syncAll(root, sourceId = null) {
 }
 
 export async function syncOne(root, source) {
+  return withStoreLock(root, () => syncOneLocked(root, source));
+}
+
+async function syncOneLocked(root, source) {
   const sources = await loadSources(root);
+  source = sources.find((candidate) => candidate.id === source.id) || source;
   const settings = await loadSettings(root);
   const rules = await loadRules(root);
   const dedupe = new Set(await listItemDedupeKeys(root));
   const result = await syncSource(root, source);
   const saved = [];
-  for (const item of result.items) {
-    if (dedupe.has(item.dedupe_key)) {
+  try {
+    for (const item of result.items) {
+      if (dedupe.has(item.dedupe_key)) {
+        await logEvent(root, "normalize", {
+          source_id: source.id,
+          item_id: item.id,
+          event_type: "dedupe_skip",
+          status: "skipped",
+          input_refs: [item.raw_payload_path]
+        });
+        continue;
+      }
+      dedupe.add(item.dedupe_key);
       await logEvent(root, "normalize", {
         source_id: source.id,
         item_id: item.id,
-        event_type: "dedupe_skip",
-        status: "skipped",
-        input_refs: [item.raw_payload_path]
+        event_type: "item_normalized",
+        output_refs: [item.raw_payload_path],
+        status: "ok"
       });
-      continue;
+      await classifyItemAndSave(root, item, {
+        rebuildIndex: false,
+        ai: settings.ai_enabled === true
+      }, rules, settings);
+      saved.push(item.id);
     }
-    await saveItem(root, item, { rebuildIndex: false });
-    dedupe.add(item.dedupe_key);
-    await logEvent(root, "normalize", {
-      source_id: source.id,
-      item_id: item.id,
-      event_type: "item_normalized",
-      output_refs: [item.raw_payload_path],
-      status: "ok"
-    });
-    await classifyItemAndSave(root, item, {
-      rebuildIndex: false,
-      ai: settings.ai_enabled === true
-    }, rules, settings);
-    saved.push(item.id);
+  } finally {
+    if (result.items.length > 0) await rebuildItemIndex(root);
   }
-  if (saved.length > 0) await rebuildItemIndex(root);
   const syncedAt = isoNow();
   const syncResult = { ok: true, saved_count: saved.length, cursor: result.cursor };
   const nextSources = sources.map((candidate) =>
@@ -91,6 +103,10 @@ export async function syncOne(root, source) {
 }
 
 export async function classifyAndSave(root, itemId, options = {}) {
+  return withStoreLock(root, () => classifyAndSaveLocked(root, itemId, options));
+}
+
+async function classifyAndSaveLocked(root, itemId, options = {}) {
   const item = await requireItem(root, itemId);
   const rules = await loadRules(root);
   const settings = await loadSettings(root);
@@ -153,6 +169,10 @@ function highestRisk(current, candidate) {
 }
 
 export async function proposeDraft(root, itemId, options = {}) {
+  return withStoreLock(root, () => proposeDraftLocked(root, itemId, options));
+}
+
+async function proposeDraftLocked(root, itemId, options = {}) {
   const item = await requireItem(root, itemId);
   const source = await sourceFor(root, item.source_id);
   const settings = await loadSettings(root);
@@ -187,6 +207,10 @@ export async function proposeDraft(root, itemId, options = {}) {
 }
 
 export async function approveAction(root, actionId, approvedBy = "local-operator") {
+  return withStoreLock(root, () => approveActionStoreLocked(root, actionId, approvedBy));
+}
+
+async function approveActionStoreLocked(root, actionId, approvedBy = "local-operator") {
   return withActionLock(root, () => approveActionLocked(root, actionId, approvedBy));
 }
 
@@ -202,6 +226,10 @@ async function approveActionLocked(root, actionId, approvedBy = "local-operator"
 }
 
 export async function rejectAction(root, actionId, approvedBy = "local-operator") {
+  return withStoreLock(root, () => rejectActionStoreLocked(root, actionId, approvedBy));
+}
+
+async function rejectActionStoreLocked(root, actionId, approvedBy = "local-operator") {
   return withActionLock(root, () => rejectActionLocked(root, actionId, approvedBy));
 }
 
@@ -217,6 +245,10 @@ async function rejectActionLocked(root, actionId, approvedBy = "local-operator")
 }
 
 export async function runAction(root, actionId) {
+  return withStoreLock(root, () => runActionStoreLocked(root, actionId));
+}
+
+async function runActionStoreLocked(root, actionId) {
   return withActionLock(root, () => runActionLocked(root, actionId));
 }
 
@@ -312,6 +344,10 @@ async function runActionLocked(root, actionId) {
 }
 
 export async function createLearning(root, itemId, input = {}) {
+  return withStoreLock(root, () => createLearningLocked(root, itemId, input));
+}
+
+async function createLearningLocked(root, itemId, input = {}) {
   const item = await requireItem(root, itemId);
   const learning = makeLearning({
     source_item_ids: [item.id],
@@ -330,6 +366,10 @@ export async function createLearning(root, itemId, input = {}) {
 }
 
 export async function setAutoActions(root, enabled) {
+  return withStoreLock(root, () => setAutoActionsLocked(root, enabled));
+}
+
+async function setAutoActionsLocked(root, enabled) {
   const settings = await loadSettings(root);
   const next = { ...settings, auto_actions_enabled: Boolean(enabled), updated_at: isoNow() };
   await saveSettings(root, next);

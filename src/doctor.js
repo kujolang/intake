@@ -1,3 +1,4 @@
+import { withStoreLock } from "./store-lock.js";
 import { access, mkdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { REQUIRED_DIRS, STORAGE_SCHEMA_VERSION } from "./constants.js";
@@ -6,6 +7,10 @@ import { resolveSecretRef } from "./secrets.js";
 import { loadMeta, loadPolicies, loadRules, loadSettings, loadSources, logEvent } from "./storage.js";
 
 export async function runDoctor(root) {
+  return withStoreLock(root, () => runDoctorLocked(root));
+}
+
+async function runDoctorLocked(root) {
   const checks = [];
   await checkFolders(root, checks);
   await checkConfigs(root, checks);

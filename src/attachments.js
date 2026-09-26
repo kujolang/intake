@@ -1,3 +1,4 @@
+import { withStoreLock } from "./store-lock.js";
 import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
 import { basename, extname, join, relative, resolve, sep } from "node:path";
 import { assertSafeId, shortHash } from "./util.js";
@@ -5,6 +6,10 @@ import { assertSafeId, shortHash } from "./util.js";
 const MAX_ATTACHMENT_DOWNLOAD_BYTES = 25 * 1024 * 1024;
 
 export async function attachmentMetadata(root, source, itemId, attachments = []) {
+  return withStoreLock(root, () => attachmentMetadataLocked(root, source, itemId, attachments));
+}
+
+async function attachmentMetadataLocked(root, source, itemId, attachments = []) {
   const quarantine = source.config?.quarantine_attachments === true || source.config?.attachment_quarantine === true;
   const rows = [];
   for (const attachment of attachments) {
@@ -43,6 +48,10 @@ export function attachmentInventory(item) {
 }
 
 export async function readQuarantinedAttachment(root, item, index, options = {}) {
+  return withStoreLock(root, () => readQuarantinedAttachmentLocked(root, item, index, options));
+}
+
+async function readQuarantinedAttachmentLocked(root, item, index, options = {}) {
   const selectedIndex = Number(index);
   if (!Number.isInteger(selectedIndex) || selectedIndex < 0) throw new Error("attachment index must be a non-negative integer");
   const attachment = (item.attachments || [])[selectedIndex];

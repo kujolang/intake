@@ -1,3 +1,4 @@
+import { withStoreLock } from "./store-lock.js";
 import { randomUUID } from "node:crypto";
 import { createGunzip, createGzip } from "node:zlib";
 import { Readable, Writable } from "node:stream";
@@ -14,6 +15,10 @@ const BACKUP_FORMAT_VERSION = 1;
 const DEFAULT_MAX_BACKUP_BYTES = 256 * 1024 * 1024;
 
 export async function createBackup(root, options = {}) {
+  return withStoreLock(root, () => createBackupLocked(root, options));
+}
+
+async function createBackupLocked(root, options = {}) {
   await initStore(root);
   const output = options.output || defaultBackupPath(root);
   const files = await collectFiles(root, { includeSecrets: options.includeSecrets === true });
@@ -54,6 +59,10 @@ export async function verifyBackup(path, options = {}) {
 }
 
 export async function restoreBackup(path, targetRoot, options = {}) {
+  return withStoreLock(targetRoot, () => restoreBackupLocked(path, targetRoot, options));
+}
+
+async function restoreBackupLocked(path, targetRoot, options = {}) {
   // Validate the same in-memory archive that will be restored, before touching target.
   const backup = await readGzipJson(path, options);
   const errors = validateBackup(backup);

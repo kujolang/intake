@@ -1,3 +1,4 @@
+import { withStoreLock } from "./store-lock.js";
 import { appendFile, mkdir, readdir, readFile, rm, stat } from "node:fs/promises";
 import { basename, join, relative, resolve, sep } from "node:path";
 import { DEFAULT_INTAKE_DIR, LOG_NAMES, REQUIRED_DIRS, STORAGE_SCHEMA_VERSION, VERSION } from "./constants.js";
@@ -29,6 +30,10 @@ export function paths(root) {
 }
 
 export async function initStore(root) {
+  return withStoreLock(root, () => initStoreLocked(root));
+}
+
+async function initStoreLocked(root) {
   for (const dir of REQUIRED_DIRS) {
     await mkdir(join(root, dir), { recursive: true });
   }
@@ -64,42 +69,82 @@ async function ensureJson(path, fallback) {
 }
 
 export async function loadSources(root) {
+  return withStoreLock(root, () => loadSourcesLocked(root));
+}
+
+async function loadSourcesLocked(root) {
   return readJson(paths(root).sources, []);
 }
 
 export async function saveSources(root, sources) {
+  return withStoreLock(root, () => saveSourcesLocked(root, sources));
+}
+
+async function saveSourcesLocked(root, sources) {
   await writeJsonAtomic(paths(root).sources, sources);
 }
 
 export async function loadPolicies(root) {
+  return withStoreLock(root, () => loadPoliciesLocked(root));
+}
+
+async function loadPoliciesLocked(root) {
   return readJson(paths(root).policies, defaultPolicies());
 }
 
 export async function savePolicies(root, policies) {
+  return withStoreLock(root, () => savePoliciesLocked(root, policies));
+}
+
+async function savePoliciesLocked(root, policies) {
   await writeJsonAtomic(paths(root).policies, policies);
 }
 
 export async function loadRules(root) {
+  return withStoreLock(root, () => loadRulesLocked(root));
+}
+
+async function loadRulesLocked(root) {
   return readJson(paths(root).rules, defaultRules());
 }
 
 export async function saveRules(root, rules) {
+  return withStoreLock(root, () => saveRulesLocked(root, rules));
+}
+
+async function saveRulesLocked(root, rules) {
   await writeJsonAtomic(paths(root).rules, rules);
 }
 
 export async function loadSettings(root) {
+  return withStoreLock(root, () => loadSettingsLocked(root));
+}
+
+async function loadSettingsLocked(root) {
   return readJson(paths(root).settings, defaultSettings());
 }
 
 export async function saveSettings(root, settings) {
+  return withStoreLock(root, () => saveSettingsLocked(root, settings));
+}
+
+async function saveSettingsLocked(root, settings) {
   await writeJsonAtomic(paths(root).settings, settings);
 }
 
 export async function loadMeta(root) {
+  return withStoreLock(root, () => loadMetaLocked(root));
+}
+
+async function loadMetaLocked(root) {
   return readJson(paths(root).meta, defaultMeta());
 }
 
 export async function saveItem(root, item, options = {}) {
+  return withStoreLock(root, () => saveItemLocked(root, item, options));
+}
+
+async function saveItemLocked(root, item, options = {}) {
   return serializeWrite(resolve(root, "index", "items.json"), async () => {
     await writeJsonAtomic(recordPath(root, "items", item.id, "item id"), item);
     if (options.rebuildIndex !== false) {
@@ -109,10 +154,18 @@ export async function saveItem(root, item, options = {}) {
 }
 
 export async function loadItem(root, id) {
+  return withStoreLock(root, () => loadItemLocked(root, id));
+}
+
+async function loadItemLocked(root, id) {
   return readJson(recordPath(root, "items", id, "item id"), null);
 }
 
 export async function deleteItem(root, id, options = {}) {
+  return withStoreLock(root, () => deleteItemLocked(root, id, options));
+}
+
+async function deleteItemLocked(root, id, options = {}) {
   return serializeWrite(resolve(root, "index", "items.json"), async () => {
     await rm(recordPath(root, "items", id, "item id"), { force: true });
     if (options.rebuildIndex !== false) await removeItemFromIndex(root, id);
@@ -120,6 +173,10 @@ export async function deleteItem(root, id, options = {}) {
 }
 
 export async function listItems(root, filters = {}) {
+  return withStoreLock(root, () => listItemsLocked(root, filters));
+}
+
+async function listItemsLocked(root, filters = {}) {
   const dir = join(root, "items");
   let names = [];
   try {
@@ -138,6 +195,10 @@ export async function listItems(root, filters = {}) {
 }
 
 export async function listItemIndex(root, filters = {}) {
+  return withStoreLock(root, () => listItemIndexLocked(root, filters));
+}
+
+async function listItemIndexLocked(root, filters = {}) {
   const rows = await readJson(join(root, "index", "items.json"), null);
   if (!Array.isArray(rows)) {
     await rebuildItemIndex(root);
@@ -147,6 +208,10 @@ export async function listItemIndex(root, filters = {}) {
 }
 
 export async function listItemDedupeKeys(root) {
+  return withStoreLock(root, () => listItemDedupeKeysLocked(root));
+}
+
+async function listItemDedupeKeysLocked(root) {
   const rows = await readJson(join(root, "index", "items.json"), null);
   if (!Array.isArray(rows)) {
     await rebuildItemIndex(root);
@@ -161,6 +226,10 @@ export async function listItemDedupeKeys(root) {
 }
 
 export async function saveAction(root, action, options = {}) {
+  return withStoreLock(root, () => saveActionLocked(root, action, options));
+}
+
+async function saveActionLocked(root, action, options = {}) {
   return serializeWrite(resolve(root, "index", "actions.json"), async () => {
     await writeJsonAtomic(recordPath(root, "actions", action.id, "action id"), action);
     if (options.rebuildIndex !== false) await upsertActionIndex(root, action);
@@ -168,10 +237,18 @@ export async function saveAction(root, action, options = {}) {
 }
 
 export async function loadAction(root, id) {
+  return withStoreLock(root, () => loadActionLocked(root, id));
+}
+
+async function loadActionLocked(root, id) {
   return readJson(recordPath(root, "actions", id, "action id"), null);
 }
 
 export async function deleteAction(root, id, options = {}) {
+  return withStoreLock(root, () => deleteActionLocked(root, id, options));
+}
+
+async function deleteActionLocked(root, id, options = {}) {
   return serializeWrite(resolve(root, "index", "actions.json"), async () => {
     await rm(recordPath(root, "actions", id, "action id"), { force: true });
     if (options.rebuildIndex !== false) await removeRecordFromIndex(root, "actions", id);
@@ -179,15 +256,27 @@ export async function deleteAction(root, id, options = {}) {
 }
 
 export async function listActions(root, filters = {}) {
+  return withStoreLock(root, () => listActionsLocked(root, filters));
+}
+
+async function listActionsLocked(root, filters = {}) {
   const rows = await listActionIndex(root, filters);
   return hydrateRecords(root, "actions", rows.map((row) => row.id), "action id");
 }
 
 export async function listActionIndex(root, filters = {}) {
+  return withStoreLock(root, () => listActionIndexLocked(root, filters));
+}
+
+async function listActionIndexLocked(root, filters = {}) {
   return listRecordIndex(root, "actions", filters, rebuildActionIndex);
 }
 
 export async function saveLearning(root, learning, options = {}) {
+  return withStoreLock(root, () => saveLearningLocked(root, learning, options));
+}
+
+async function saveLearningLocked(root, learning, options = {}) {
   return serializeWrite(resolve(root, "index", "learnings.json"), async () => {
     await writeJsonAtomic(recordPath(root, "learnings", learning.id, "learning id"), learning);
     if (options.rebuildIndex !== false) await upsertLearningIndex(root, learning);
@@ -195,10 +284,18 @@ export async function saveLearning(root, learning, options = {}) {
 }
 
 export async function loadLearning(root, id) {
+  return withStoreLock(root, () => loadLearningLocked(root, id));
+}
+
+async function loadLearningLocked(root, id) {
   return readJson(recordPath(root, "learnings", id, "learning id"), null);
 }
 
 export async function deleteLearning(root, id, options = {}) {
+  return withStoreLock(root, () => deleteLearningLocked(root, id, options));
+}
+
+async function deleteLearningLocked(root, id, options = {}) {
   return serializeWrite(resolve(root, "index", "learnings.json"), async () => {
     await rm(recordPath(root, "learnings", id, "learning id"), { force: true });
     if (options.rebuildIndex !== false) await removeRecordFromIndex(root, "learnings", id);
@@ -206,11 +303,19 @@ export async function deleteLearning(root, id, options = {}) {
 }
 
 export async function listLearnings(root, filters = {}) {
+  return withStoreLock(root, () => listLearningsLocked(root, filters));
+}
+
+async function listLearningsLocked(root, filters = {}) {
   const rows = await listLearningIndex(root, filters);
   return hydrateRecords(root, "learnings", rows.map((row) => row.id), "learning id");
 }
 
 export async function listLearningIndex(root, filters = {}) {
+  return withStoreLock(root, () => listLearningIndexLocked(root, filters));
+}
+
+async function listLearningIndexLocked(root, filters = {}) {
   return listRecordIndex(root, "learnings", filters, rebuildLearningIndex);
 }
 
@@ -278,6 +383,10 @@ function paginateRows(rows, filters = {}) {
 }
 
 export async function storeRaw(root, area, sourceId, id, extension, content) {
+  return withStoreLock(root, () => storeRawLocked(root, area, sourceId, id, extension, content));
+}
+
+async function storeRawLocked(root, area, sourceId, id, extension, content) {
   const safeArea = assertSafeId(area, "raw area");
   const safeSource = assertSafeId(sourceId || "unknown", "source id");
   const safeId = assertSafeId(id, "raw id");
@@ -288,6 +397,10 @@ export async function storeRaw(root, area, sourceId, id, extension, content) {
 }
 
 export async function readRaw(root, relPath) {
+  return withStoreLock(root, () => readRawLocked(root, relPath));
+}
+
+async function readRawLocked(root, relPath) {
   const rootPath = resolve(root);
   const target = resolve(rootPath, String(relPath || ""));
   if (!target.startsWith(`${rootPath}${sep}`)) return null;
@@ -306,6 +419,10 @@ function parseListBound(value, fallback) {
 }
 
 export async function logEvent(root, name, entry) {
+  return withStoreLock(root, () => logEventLocked(root, name, entry));
+}
+
+async function logEventLocked(root, name, entry) {
   const path = join(root, "logs", `${name}.jsonl`);
   const base = {
     timestamp: isoNow(),
@@ -325,6 +442,10 @@ export async function logEvent(root, name, entry) {
 }
 
 export async function rebuildItemIndex(root) {
+  return withStoreLock(root, () => rebuildItemIndexLocked(root));
+}
+
+async function rebuildItemIndexLocked(root) {
   return serializeWrite(resolve(root, "index", "items.json"), () => rebuildItemIndexUnlocked(root));
 }
 
@@ -335,6 +456,10 @@ async function rebuildItemIndexUnlocked(root) {
 }
 
 export async function rebuildActionIndex(root) {
+  return withStoreLock(root, () => rebuildActionIndexLocked(root));
+}
+
+async function rebuildActionIndexLocked(root) {
   return serializeWrite(resolve(root, "index", "actions.json"), () => rebuildActionIndexUnlocked(root));
 }
 
@@ -344,6 +469,10 @@ async function rebuildActionIndexUnlocked(root) {
 }
 
 export async function rebuildLearningIndex(root) {
+  return withStoreLock(root, () => rebuildLearningIndexLocked(root));
+}
+
+async function rebuildLearningIndexLocked(root) {
   return serializeWrite(resolve(root, "index", "learnings.json"), () => rebuildLearningIndexUnlocked(root));
 }
 

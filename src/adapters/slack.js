@@ -1,3 +1,4 @@
+import { withStoreLock } from "../store-lock.js";
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { createServer } from "node:http";
 import { makeItem } from "../models.js";
@@ -80,10 +81,13 @@ export async function startSlackServer(root, source, options = {}) {
         res.end(payload.challenge || "");
         return;
       }
-      const item = await normalizeSlackPayload(root, source, payload);
-      await saveItem(root, item);
-      await classifyAndSave(root, item.id);
-      await logEvent(root, "sync", { source_id: source.id, item_id: item.id, event_type: "slack_event_received" });
+      const item = await withStoreLock(root, async () => {
+        const item = await normalizeSlackPayload(root, source, payload);
+        await saveItem(root, item);
+        await classifyAndSave(root, item.id);
+        await logEvent(root, "sync", { source_id: source.id, item_id: item.id, event_type: "slack_event_received" });
+        return item;
+      });
       res.writeHead(202, { "content-type": "application/json" });
       res.end(JSON.stringify({ ok: true, item_id: item.id }));
     } catch (error) {
