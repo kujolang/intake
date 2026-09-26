@@ -92,7 +92,10 @@ export async function startSlackServer(root, source, options = {}) {
       res.end(JSON.stringify({ ok: false, error: error.message }));
     }
   });
-  await new Promise((resolve) => server.listen(port, "127.0.0.1", resolve));
+  await new Promise((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(port, "127.0.0.1", () => { server.off("error", reject); resolve(); });
+  });
   const address = server.address();
   return { server, url: `http://127.0.0.1:${address.port}${path}` };
 }

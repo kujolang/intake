@@ -1,17 +1,25 @@
 import { riskAtMost } from "./rules.js";
 
 export function evaluatePolicy({ item, actionType, policies, settings, source }) {
-  const applicable = policies.find((policy) => policyApplies(policy, item)) || policies[0];
+  const applicable = policies.find((policy) => policyApplies(policy, item)) || { id: null, allowed_actions: [], blocked_actions: ["*"], requires_human_review: true };
   const policyAllowed = applicable.allowed_actions.includes(actionType) || applicable.allowed_actions.includes("*");
   const sourceAllowed = !Array.isArray(source?.config?.allowed_actions) || source.config.allowed_actions.includes(actionType) || source.config.allowed_actions.includes("*");
   const allowed = policyAllowed && sourceAllowed;
-  const blocked = applicable.blocked_actions.includes(actionType) || applicable.blocked_actions.includes("*");
+  const ruleBlocks = item.policy?.blocked_actions || [];
+  const blocked = applicable.blocked_actions.includes(actionType) || applicable.blocked_actions.includes("*") || ruleBlocks.includes(actionType) || ruleBlocks.includes("*");
+  const confidenceThreshold = Number(applicable.confidence_threshold || 0);
+  const confidence = Number(item.ai_confidence);
+  const confidenceMet = confidenceThreshold === 0 || (item.ai_confidence != null && Number.isFinite(confidence) && confidence >= confidenceThreshold);
   const underRisk = riskAtMost(item.risk_level || "low", applicable.risk_ceiling || "low");
   const globalAutoEnabled = Boolean(settings.auto_actions_enabled);
   const sourceAutoEnabled = source ? source.auto_action_policy !== "disabled" : true;
   const rateBudget = autoActionBudget(settings, applicable);
   const requiresHumanReview =
     applicable.requires_human_review ||
+    item.status === "needs_review" ||
+    item.policy?.requires_human_review === true ||
+    ruleBlocks.includes("auto_execute") ||
+    !confidenceMet ||
     item.risk_level === "high" ||
     item.risk_level === "critical" ||
     blocked ||
@@ -26,6 +34,7 @@ export function evaluatePolicy({ item, actionType, policies, settings, source })
     auto_execute_allowed:
       allowed &&
       !blocked &&
+      !requiresHumanReview &&
       underRisk &&
       globalAutoEnabled &&
       sourceAutoEnabled &&
@@ -35,6 +44,7 @@ export function evaluatePolicy({ item, actionType, policies, settings, source })
       !policyAllowed ? "action is not in policy allowed_actions" : null,
       !sourceAllowed ? "action is not in source allowed_actions" : null,
       blocked ? "action is in blocked_actions" : null,
+      !confidenceMet ? "item confidence is below policy threshold" : null,
       !underRisk ? `item risk ${item.risk_level} exceeds policy ceiling ${applicable.risk_ceiling}` : null,
       !globalAutoEnabled ? "global auto-action kill switch is off" : null,
       !sourceAutoEnabled ? "source auto-actions are disabled" : null,

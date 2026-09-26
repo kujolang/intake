@@ -1,3 +1,4 @@
+import { withActionLock } from "./action-lock.js";
 import { executeAdapterAction, syncSource } from "./adapters/index.js";
 import { aiUnavailableResult, classifyWithAi, deterministicSummary, draftFallback } from "./ai.js";
 import { makeAction, makeLearning } from "./models.js";
@@ -37,6 +38,7 @@ export async function syncAll(root, sourceId = null) {
 export async function syncOne(root, source) {
   const sources = await loadSources(root);
   const settings = await loadSettings(root);
+  const rules = await loadRules(root);
   const dedupe = new Set(await listItemDedupeKeys(root));
   const result = await syncSource(root, source);
   const saved = [];
@@ -60,10 +62,10 @@ export async function syncOne(root, source) {
       output_refs: [item.raw_payload_path],
       status: "ok"
     });
-    await classifyAndSave(root, item.id, {
+    await classifyItemAndSave(root, item, {
       rebuildIndex: false,
       ai: settings.ai_enabled === true
-    });
+    }, rules, settings);
     saved.push(item.id);
   }
   if (saved.length > 0) await rebuildItemIndex(root);
@@ -92,12 +94,17 @@ export async function classifyAndSave(root, itemId, options = {}) {
   const item = await requireItem(root, itemId);
   const rules = await loadRules(root);
   const settings = await loadSettings(root);
+  return classifyItemAndSave(root, item, options, rules, settings);
+}
+
+async function classifyItemAndSave(root, item, options, rules, settings) {
   const { item: ruled, matches } = applyRules(item, rules);
   const safety = safetyCheck(ruled);
   let next = {
     ...ruled,
     safety_flags: uniq([...(ruled.safety_flags || []), ...safety.flags]),
     risk_level: safety.risk_level,
+    policy: { ...ruled.policy, requires_human_review: safety.requires_human_review },
     status: safety.requires_human_review ? "needs_review" : ruled.status
   };
 
@@ -131,7 +138,10 @@ function mergeAiResult(item, ai) {
   }
   if (typeof ai.confidence === "number") next.ai_confidence = ai.confidence;
   if (ai.suggested_action) next.suggested_actions = uniq([...(next.suggested_actions || []), ai.suggested_action]);
-  if (ai.human_review_required && next.status !== "resolved") next.status = "needs_review";
+  if (ai.human_review_required) {
+    next.policy = { ...next.policy, requires_human_review: true };
+    if (next.status !== "resolved") next.status = "needs_review";
+  }
   return next;
 }
 
@@ -177,6 +187,10 @@ export async function proposeDraft(root, itemId, options = {}) {
 }
 
 export async function approveAction(root, actionId, approvedBy = "local-operator") {
+  return withActionLock(root, () => approveActionLocked(root, actionId, approvedBy));
+}
+
+async function approveActionLocked(root, actionId, approvedBy = "local-operator") {
   const action = await requireAction(root, actionId);
   if (["executed", "rejected"].includes(action.status)) {
     return action;
@@ -188,6 +202,10 @@ export async function approveAction(root, actionId, approvedBy = "local-operator
 }
 
 export async function rejectAction(root, actionId, approvedBy = "local-operator") {
+  return withActionLock(root, () => rejectActionLocked(root, actionId, approvedBy));
+}
+
+async function rejectActionLocked(root, actionId, approvedBy = "local-operator") {
   const action = await requireAction(root, actionId);
   if (action.status === "executed") {
     return action;
@@ -199,9 +217,16 @@ export async function rejectAction(root, actionId, approvedBy = "local-operator"
 }
 
 export async function runAction(root, actionId) {
+  return withActionLock(root, () => runActionLocked(root, actionId));
+}
+
+async function runActionLocked(root, actionId) {
   const action = await requireAction(root, actionId);
-  if (action.status === "executed") {
+  if (["executed", "rejected"].includes(action.status)) {
     return action;
+  }
+  if (["executing", "execution_uncertain"].includes(action.status)) {
+    throw new Error("action outcome is uncertain; reconcile the external effect and explicitly approve before retrying");
   }
   const item = await requireItem(root, action.intake_item_id);
   const source = await sourceFor(root, item.source_id);
@@ -246,29 +271,35 @@ export async function runAction(root, actionId) {
   }
   const autoExecuted = action.status !== "approved" && policyResult.auto_execute_allowed;
 
-  let result;
-  if (action.metadata?.demo_seed_id) {
-    result = { demo: true, dry_run: true, note: "Demo action executed locally; no outbound email was sent or appended." };
-  } else if (action.type === "draft_response" && source?.type === "email") {
-    result = await executeAdapterAction(source, { ...action, type: "append_remote_draft" }, item);
-  } else if (action.type === "send_response") {
-    result = await executeAdapterAction(source, action, item);
-  } else if (action.type === "comment_issue") {
-    result = await executeAdapterAction(source, action, item);
-  } else if (action.type === "mark_resolved") {
-    await saveItem(root, { ...item, status: "resolved", queue: "resolved", updated_at: isoNow() });
-    result = { resolved: true };
-  } else if (action.type === "create_learning") {
-    const learning = await createLearning(root, item.id);
-    result = { learning_id: learning.id };
-  } else {
-    result = { dry_run: true, note: `No adapter executor for ${action.type}; recorded as executed local action.` };
-  }
-  const next = { ...action, status: "executed", executed_at: isoNow(), result };
-  await saveAction(root, next);
+  await saveAction(root, { ...action, status: "executing" });
   if (autoExecuted) {
     await saveSettings(root, { ...settings, action_counters: nextActionCounters(settings, actionType), updated_at: isoNow() });
   }
+  let result;
+  try {
+    if (action.metadata?.demo_seed_id) {
+      result = { demo: true, dry_run: true, note: "Demo action executed locally; no outbound email was sent or appended." };
+    } else if (action.type === "draft_response" && source?.type === "email") {
+      result = await executeAdapterAction(source, { ...action, type: "append_remote_draft" }, item);
+    } else if (action.type === "send_response") {
+      result = await executeAdapterAction(source, action, item);
+    } else if (action.type === "comment_issue") {
+      result = await executeAdapterAction(source, action, item);
+    } else if (action.type === "mark_resolved") {
+      await saveItem(root, { ...item, status: "resolved", queue: "resolved", updated_at: isoNow() });
+      result = { resolved: true };
+    } else if (action.type === "create_learning") {
+      const learning = await createLearning(root, item.id);
+      result = { learning_id: learning.id };
+    } else {
+      result = { dry_run: true, note: `No adapter executor for ${action.type}; recorded as executed local action.` };
+    }
+  } catch (error) {
+    await saveAction(root, { ...action, status: "execution_uncertain", result: { error: "execution failed; reconcile before retrying" } });
+    throw error;
+  }
+  const next = { ...action, status: "executed", executed_at: isoNow(), result };
+  await saveAction(root, next);
   await logEvent(root, "actions", {
     source_id: item.source_id,
     item_id: item.id,

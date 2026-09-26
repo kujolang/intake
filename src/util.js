@@ -94,10 +94,14 @@ export async function readJson(path, fallback) {
 }
 
 export async function writeJsonAtomic(path, value) {
+  return writeTextAtomic(path, `${JSON.stringify(value, null, 2)}\n`);
+}
+
+export async function writeTextAtomic(path, value) {
   await mkdir(dirname(path), { recursive: true });
-  const tmp = `${path}.tmp-${process.pid}-${Date.now()}`;
+  const tmp = `${path}.tmp-${process.pid}-${randomUUID()}`;
   try {
-    await writeFile(tmp, `${JSON.stringify(value, null, 2)}\n`, "utf8");
+    await writeFile(tmp, value, { flag: "wx" });
     await rename(tmp, path);
   } catch (error) {
     await rm(tmp, { force: true }).catch(() => {});
@@ -105,15 +109,16 @@ export async function writeJsonAtomic(path, value) {
   }
 }
 
-export async function writeTextAtomic(path, value) {
-  await mkdir(dirname(path), { recursive: true });
-  const tmp = `${path}.tmp-${process.pid}-${Date.now()}`;
+// Serialize read/modify/write operations within this process; remove idle queues.
+const pendingWrites = new Map();
+export async function serializeWrite(key, operation) {
+  const previous = pendingWrites.get(key) || Promise.resolve();
+  const current = previous.catch(() => {}).then(operation);
+  pendingWrites.set(key, current);
   try {
-    await writeFile(tmp, value, "utf8");
-    await rename(tmp, path);
-  } catch (error) {
-    await rm(tmp, { force: true }).catch(() => {});
-    throw error;
+    return await current;
+  } finally {
+    if (pendingWrites.get(key) === current) pendingWrites.delete(key);
   }
 }
 

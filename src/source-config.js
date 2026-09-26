@@ -75,6 +75,7 @@ export function sanitizeSources(sources) {
 export function sanitizeSource(source) {
   const config = { ...(source.config || {}) };
   if (config.token) config.token = "[REDACTED]";
+  if (config.signing_secret) config.signing_secret = "[REDACTED]";
   if (config.api_token) config.api_token = "[REDACTED]";
   return { ...source, config };
 }

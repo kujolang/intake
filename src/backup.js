@@ -1,8 +1,9 @@
+import { randomUUID } from "node:crypto";
 import { createGunzip, createGzip } from "node:zlib";
-import { Writable } from "node:stream";
+import { Readable, Writable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import { createReadStream, createWriteStream } from "node:fs";
-import { mkdir, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { mkdir, readdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import { basename, dirname, join, relative, resolve, sep } from "node:path";
 import { STORAGE_SCHEMA_VERSION, VERSION } from "./constants.js";
 import { initStore, loadMeta, logEvent } from "./storage.js";
@@ -10,6 +11,7 @@ import { isoNow, sha256 } from "./util.js";
 
 const BACKUP_FORMAT = "kujo-intake-backup";
 const BACKUP_FORMAT_VERSION = 1;
+const DEFAULT_MAX_BACKUP_BYTES = 256 * 1024 * 1024;
 
 export async function createBackup(root, options = {}) {
   await initStore(root);
@@ -37,41 +39,64 @@ export async function createBackup(root, options = {}) {
   return { ...backupSummary(backup, output), rotation };
 }
 
-export async function verifyBackup(path) {
-  const backup = await readGzipJson(path);
+export async function verifyBackup(path, options = {}) {
+  const backup = await readGzipJson(path, options);
   const errors = validateBackup(backup);
   return {
     ok: errors.length === 0,
     path,
     errors,
-    file_count: Array.isArray(backup.files) ? backup.files.length : 0,
-    schema_version: backup.schema_version,
-    created_at: backup.created_at,
-    include_secrets: backup.include_secrets === true
+    file_count: Array.isArray(backup?.files) ? backup.files.length : 0,
+    schema_version: backup?.schema_version,
+    created_at: backup?.created_at,
+    include_secrets: backup?.include_secrets === true
   };
 }
 
 export async function restoreBackup(path, targetRoot, options = {}) {
-  const verification = await verifyBackup(path);
-  if (!verification.ok) {
-    throw new Error(`backup verification failed: ${verification.errors.join("; ")}`);
-  }
-  const backup = await readGzipJson(path);
+  // Validate the same in-memory archive that will be restored, before touching target.
+  const backup = await readGzipJson(path, options);
+  const errors = validateBackup(backup);
+  if (errors.length) throw new Error(`backup verification failed: ${errors.join("; ")}`);
   await assertRestoreTarget(targetRoot, options.force === true);
-  if (options.force === true) await rm(targetRoot, { recursive: true, force: true });
-  for (const file of backup.files) {
-    const target = safeJoin(targetRoot, file.path);
-    await mkdir(dirname(target), { recursive: true });
-    await writeFile(target, Buffer.from(file.content_base64, "base64"));
+  const staging = `${resolve(targetRoot)}.restore-${randomUUID()}`;
+  const previous = `${resolve(targetRoot)}.previous-${randomUUID()}`;
+  let movedPrevious = false;
+  let committed = false;
+  try {
+    await mkdir(staging, { recursive: true });
+    for (const file of backup.files) {
+      const target = safeJoin(staging, file.path);
+      await mkdir(dirname(target), { recursive: true });
+      await writeFile(target, Buffer.from(file.content_base64, "base64"), { flag: "wx" });
+    }
+    await initStore(staging);
+    await logEvent(staging, "audit", {
+      event_type: "backup_restored",
+      status: "ok",
+      input_refs: [path],
+      metadata: { file_count: backup.files.length, source_created_at: backup.created_at }
+    });
+    // Recheck because building the staging tree may take time.
+    await assertRestoreTarget(targetRoot, options.force === true);
+    try {
+      await rename(targetRoot, previous);
+      movedPrevious = true;
+    } catch (error) {
+      if (error.code !== "ENOENT") throw error;
+    }
+    try {
+      await rename(staging, targetRoot);
+      committed = true;
+    } catch (error) {
+      if (movedPrevious) await rename(previous, targetRoot);
+      throw error;
+    }
+    if (movedPrevious) await rm(previous, { recursive: true, force: true });
+    return { ok: true, path, restored_to: targetRoot, file_count: backup.files.length };
+  } finally {
+    if (!committed) await rm(staging, { recursive: true, force: true });
   }
-  await initStore(targetRoot);
-  await logEvent(targetRoot, "audit", {
-    event_type: "backup_restored",
-    status: "ok",
-    input_refs: [path],
-    metadata: { file_count: backup.files.length, source_created_at: backup.created_at }
-  });
-  return { ok: true, path, restored_to: targetRoot, file_count: backup.files.length };
 }
 
 async function collectFiles(root, options) {
@@ -85,7 +110,8 @@ async function walk(rootPath, dir, out, options) {
   let entries = [];
   try {
     entries = await readdir(dir, { withFileTypes: true });
-  } catch {
+  } catch (error) {
+    if (error.code !== "ENOENT") throw error;
     return;
   }
   for (const entry of entries) {
@@ -97,7 +123,14 @@ async function walk(rootPath, dir, out, options) {
       continue;
     }
     if (!entry.isFile()) continue;
-    const buffer = await readFile(abs);
+    let buffer = await readFile(abs);
+    if (!options.includeSecrets && rel === join("config", "sources.json")) {
+      const sources = JSON.parse(buffer.toString("utf8"));
+      for (const source of sources) {
+        for (const key of ["token", "api_token", "signing_secret"]) delete source.config?.[key];
+      }
+      buffer = Buffer.from(`${JSON.stringify(sources, null, 2)}\n`);
+    }
     out.push({
       path: rel,
       size: buffer.length,
@@ -109,7 +142,7 @@ async function walk(rootPath, dir, out, options) {
 
 function shouldSkip(rel, entry, options) {
   const parts = rel.split(sep);
-  if (parts[0] === "backups") return true;
+  if (parts[0] === "backups" || parts[0] === ".action-lock" || /\.tmp-/.test(entry.name)) return true;
   if (entry.name === ".DS_Store") return true;
   if (entry.name === ".env" && options.includeSecrets !== true) return true;
   if (parts[0] === "secrets" && options.includeSecrets !== true) return true;
@@ -121,15 +154,29 @@ function validateBackup(backup) {
   if (backup?.format !== BACKUP_FORMAT) errors.push("unsupported backup format");
   if (backup?.format_version !== BACKUP_FORMAT_VERSION) errors.push("unsupported backup format version");
   if (backup?.schema_version !== STORAGE_SCHEMA_VERSION) errors.push(`unsupported schema version ${backup?.schema_version}`);
-  if (!Array.isArray(backup?.files)) errors.push("missing files array");
-  for (const file of backup?.files || []) {
-    if (!file.path || file.path.includes("..") || file.path.startsWith("/") || file.path.includes("\\")) {
-      errors.push(`unsafe backup path ${file.path || "(missing)"}`);
+  if (!Array.isArray(backup?.files)) return [...errors, "missing files array"];
+  const paths = new Set();
+  for (const file of backup.files) {
+    if (!file || typeof file.path !== "string" || !file.path || file.path.includes("\0") || /^[A-Za-z]:/.test(file.path) || file.path.includes("\\") || file.path.split("/").some((part) => !part || part === "." || part === "..")) {
+      errors.push("unsafe backup path");
       continue;
     }
-    const buffer = Buffer.from(file.content_base64 || "", "base64");
+    if (paths.has(file.path)) errors.push(`duplicate backup path ${file.path}`);
+    paths.add(file.path);
+    if (typeof file.content_base64 !== "string" || !Number.isSafeInteger(file.size) || file.size < 0) {
+      errors.push(`invalid file record ${file.path}`);
+      continue;
+    }
+    const buffer = Buffer.from(file.content_base64, "base64");
+    if (buffer.toString("base64") !== file.content_base64) errors.push(`invalid base64 ${file.path}`);
     if (buffer.length !== file.size) errors.push(`size mismatch ${file.path}`);
     if (sha256(buffer) !== file.sha256) errors.push(`checksum mismatch ${file.path}`);
+  }
+  for (const path of paths) {
+    const parts = path.split("/");
+    for (let i = 1; i < parts.length; i++) {
+      if (paths.has(parts.slice(0, i).join("/"))) errors.push(`conflicting backup path ${path}`);
+    }
   }
   return errors;
 }
@@ -161,8 +208,8 @@ function backupSummary(backup, output) {
     ok: true,
     path: output,
     file_count: backup.files.length,
-    schema_version: backup.schema_version,
-    created_at: backup.created_at,
+    schema_version: backup?.schema_version,
+    created_at: backup?.created_at,
     include_secrets: backup.include_secrets
   };
 }
@@ -197,21 +244,29 @@ async function rotateBackups(dir, keep) {
 }
 
 async function writeGzipJson(path, value) {
-  const tmp = `${path}.tmp-${Date.now()}`;
+  const tmp = `${path}.tmp-${randomUUID()}`;
   await mkdir(dirname(path), { recursive: true });
-  await writeFile(tmp, `${JSON.stringify(value, null, 2)}\n`, "utf8");
-  await pipeline(createReadStream(tmp), createGzip({ level: 9 }), createWriteStream(path));
-  await rm(tmp, { force: true });
+  try {
+    await pipeline(Readable.from([`${JSON.stringify(value, null, 2)}\n`]), createGzip({ level: 9 }), createWriteStream(tmp, { flags: "wx", mode: 0o600 }));
+    await rename(tmp, path);
+  } finally {
+    await rm(tmp, { force: true });
+  }
 }
 
-async function readGzipJson(path) {
+async function readGzipJson(path, options = {}) {
+  const maxBytes = Number(options.maxBytes ?? DEFAULT_MAX_BACKUP_BYTES);
+  if (!Number.isSafeInteger(maxBytes) || maxBytes <= 0) throw new Error("backup size limit must be a positive integer");
   const chunks = [];
+  let bytes = 0;
   await pipeline(
     createReadStream(path),
     createGunzip(),
     new Writable({
       write(chunk, _encoding, callback) {
-        chunks.push(Buffer.from(chunk));
+        bytes += chunk.length;
+        if (bytes > maxBytes) return callback(new Error(`backup exceeds decompressed limit of ${maxBytes} bytes`));
+        chunks.push(chunk);
         callback();
       }
     })

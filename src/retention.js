@@ -136,7 +136,8 @@ async function pruneLogs(root, days, options) {
     let raw = "";
     try {
       raw = await readFile(path, "utf8");
-    } catch {
+    } catch (error) {
+      if (error.code !== "ENOENT") throw error;
       continue;
     }
     const lines = raw.split(/\r?\n/).filter(Boolean);
@@ -175,7 +176,8 @@ async function listFiles(dir) {
   let entries = [];
   try {
     entries = await readdir(dir, { withFileTypes: true });
-  } catch {
+  } catch (error) {
+    if (error.code !== "ENOENT") throw error;
     return [];
   }
   const out = [];

@@ -76,7 +76,7 @@ export function makeItem(input) {
 export function makeAction(input) {
   const now = isoNow();
   return {
-    id: input.id || newId("act", `${input.intake_item_id}:${input.type}:${now}`),
+    id: input.id || newId("act"),
     intake_item_id: input.intake_item_id,
     source_id: input.source_id || null,
     type: input.type,
@@ -99,7 +99,7 @@ export function makeAction(input) {
 export function makeLearning(input) {
   const now = isoNow();
   return {
-    id: input.id || newId("lrn", `${input.type}:${input.title}:${now}`),
+    id: input.id || newId("lrn"),
     source_item_ids: input.source_item_ids || [],
     source_id: input.source_id || null,
     type: input.type || "general",

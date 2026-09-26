@@ -1,9 +1,9 @@
 import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 
 export function loadDotEnvFiles({ cwd = process.cwd(), intakeDir = process.env.INTAKE_DIR || ".intake" } = {}) {
-  for (const path of [join(cwd, ".env"), join(cwd, intakeDir, ".env")]) {
+  for (const path of [join(cwd, ".env"), join(resolve(cwd, intakeDir), ".env")]) {
     if (existsSync(path)) loadDotEnvFile(path);
   }
 }

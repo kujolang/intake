@@ -8,7 +8,9 @@ export function applyRules(item, rules) {
   const matched = [];
   let next = { ...item, tags: [...(item.tags || [])], suggested_actions: [...(item.suggested_actions || [])] };
 
+  const blockedActions = [];
   for (const rule of rules) {
+    if (rule.status && rule.status !== "approved") continue;
     const terms = rule.match_any || [];
     if (!terms.length || !includesAny(text, terms)) continue;
     matched.push({
@@ -17,6 +19,7 @@ export function applyRules(item, rules) {
       description: rule.description,
       matched_terms: terms.filter((term) => text.includes(String(term).toLowerCase()))
     });
+    blockedActions.push(...(rule.blocked_actions || []));
     next.tags = uniq([...(next.tags || []), ...(rule.tags || [])]);
     next.suggested_actions = uniq([...(next.suggested_actions || []), ...(rule.suggested_actions || [])]);
     if (rule.category) next.category = rule.category;
@@ -33,7 +36,8 @@ export function applyRules(item, rules) {
   next.last_processed_at = isoNow();
   next.policy = {
     ...(next.policy || {}),
-    rule_matches: matched
+    rule_matches: matched,
+    blocked_actions: uniq(blockedActions)
   };
   return { item: next, matches: matched };
 }

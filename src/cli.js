@@ -119,6 +119,7 @@ async function cmdDoctor(root, flags) {
     await logEvent(root, "audit", { event_type: "doctor_fix", status: "ok" });
   }
   const result = await runDoctor(root);
+  if (!result.ok) process.exitCode = 1;
   if (flags.json) return printJson(result);
   for (const check of result.checks) {
     console.log(`${check.status.toUpperCase().padEnd(4)} ${check.id} - ${check.message}`);
@@ -542,7 +543,8 @@ async function cmdBackup(root, subcommand, args, flags) {
   if (subcommand === "verify") {
     const path = args[0] || flags.path;
     if (!path) throw new Error("usage: intake backup verify BACKUP_PATH");
-    const result = await verifyBackup(path);
+    const result = await verifyBackup(path, { maxBytes: flags.maxBytes });
+    if (!result.ok) process.exitCode = 1;
     if (flags.json) return printJson(result);
     console.log(`${result.ok ? "OK" : "FAIL"} backup ${path} (${result.file_count} files)`);
     for (const error of result.errors || []) console.log(`FAIL ${error}`);
@@ -552,7 +554,7 @@ async function cmdBackup(root, subcommand, args, flags) {
   if (subcommand === "restore") {
     const path = args[0] || flags.path;
     if (!path) throw new Error("usage: intake backup restore BACKUP_PATH [--target DIR] [--force]");
-    const result = await restoreBackup(path, flags.target || root, { force: flags.force === true });
+    const result = await restoreBackup(path, flags.target || root, { force: flags.force === true, maxBytes: flags.maxBytes });
     return flags.json ? printJson(result) : console.log(`Restored ${result.file_count} files to ${result.restored_to}`);
   }
   throw new Error("usage: intake backup create|verify|restore");

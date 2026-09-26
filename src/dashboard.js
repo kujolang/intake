@@ -2,18 +2,19 @@ import { randomBytes } from "node:crypto";
 import { createServer as createHttpServer } from "node:http";
 import { createServer as createHttpsServer } from "node:https";
 import { readFileSync } from "node:fs";
-import { readFile } from "node:fs/promises";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { attachmentInventory, readQuarantinedAttachment } from "./attachments.js";
 import { testSource } from "./adapters/index.js";
 import { AI_PROVIDER_PRESETS } from "./ai.js";
+import { withActionLock } from "./action-lock.js";
+import { readLogPage } from "./logs.js";
 import { makeAction } from "./models.js";
 import { buildSourceFromInput, sanitizeSource, sanitizeSources } from "./source-config.js";
 import { initStore, listActionIndex, listActions, listItemIndex, listLearningIndex, listLearnings, loadAction, loadItem, loadPolicies, loadRules, loadSettings, loadSources, readRaw, saveAction, saveItem, savePolicies, saveRules, saveSettings, saveSources, logEvent } from "./storage.js";
 import { evaluatePolicy } from "./policy.js";
 import { appendSourceSyncHistory, appendSourceTestHistory } from "./source-history.js";
 import { approveAction, classifyAndSave, createLearning, proposeDraft, rejectAction, runAction, setAutoActions, syncAll } from "./workflow.js";
-import { isoNow, parseCsv, readStreamText, timingSafeEqualString, uniq } from "./util.js";
+import { isoNow, parseCsv, readStreamText, serializeWrite, timingSafeEqualString, uniq } from "./util.js";
 
 const LOGS = ["sync", "normalize", "classify", "policy", "actions", "audit", "errors"];
 const MAX_DASHBOARD_BODY_BYTES = 1024 * 1024;
@@ -54,7 +55,7 @@ const ICONS = Object.fromEntries(ICON_NAMES.map((name) => [name, loadTablerIcon(
 
 function loadTablerIcon(name) {
   try {
-    return readFileSync(join(process.cwd(), "node_modules", "@tabler", "icons", "icons", "outline", `${name}.svg`), "utf8")
+    return readFileSync(new URL(`../node_modules/@tabler/icons/icons/outline/${name}.svg`, import.meta.url), "utf8")
       .replace(/\s(width|height)="24"/g, "")
       .replace("<svg ", `<svg class="icon icon-${name}" aria-hidden="true" focusable="false" `);
   } catch {
@@ -98,10 +99,10 @@ export async function startDashboard(root, options = {}) {
       if (req.method === "GET" && (url.pathname === "/" || url.pathname === "/dashboard")) {
         return sendHtml(res, dashboardHtml());
       }
-      if (url.pathname === "/healthz") return sendJson(res, { ok: true, local_only: true });
+      if (url.pathname === "/healthz") return sendJson(res, { ok: true, local_only: localOnly });
       if (!authorized(req, url, activeToken)) return sendJson(res, { error: "unauthorized" }, 401);
       const body = await parseBody(req);
-      const result = await routeApi(root, req.method, url, body, {
+      const route = () => routeApi(root, req.method, url, body, {
         dashboardToken: () => activeToken,
         dashboardTokenSource: () => activeTokenSource,
         securityPosture: posture,
@@ -111,6 +112,7 @@ export async function startDashboard(root, options = {}) {
           return activeToken;
         }
       });
+      const result = req.method === "GET" ? await route() : await serializeWrite(resolve(root, ".dashboard-mutations"), route);
       return sendJson(res, result);
     } catch (error) {
       await logEvent(root, "errors", { event_type: "dashboard_error", status: "failed", error: error.message });
@@ -121,7 +123,10 @@ export async function startDashboard(root, options = {}) {
     ? createHttpsServer({ cert: readFileSync(options.tlsCert), key: readFileSync(options.tlsKey) }, handler)
     : createHttpServer(handler);
 
-  await new Promise((resolve) => server.listen(port, host, resolve));
+  await new Promise((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(port, host, () => { server.off("error", reject); resolve(); });
+  });
   await logEvent(root, "audit", { event_type: "dashboard_started", status: "ok" });
   const protocol = tlsEnabled ? "https" : "http";
   return { server, host, port: server.address().port, token: activeToken, posture: posture(), url: `${protocol}://${host}:${server.address().port}/?token=${encodeURIComponent(activeToken)}` };
@@ -320,9 +325,13 @@ async function mutateAction(root, actionId, action, body = {}) {
 }
 
 async function updateDashboardAction(root, actionId, body) {
+  return withActionLock(root, () => updateDashboardActionLocked(root, actionId, body));
+}
+
+async function updateDashboardActionLocked(root, actionId, body) {
   const action = await loadAction(root, actionId);
   if (!action) throw httpError(404, "no such action");
-  if (action.status === "executed") throw httpError(400, "executed actions cannot be edited");
+  if (["executed", "executing", "execution_uncertain"].includes(action.status)) throw httpError(400, "executed actions cannot be edited");
   const next = {
     ...action,
     type: nullableString(body.type) || action.type,
@@ -335,6 +344,11 @@ async function updateDashboardAction(root, actionId, body) {
       edited_at: isoNow()
     }
   };
+  if (next.type !== action.type || next.body !== action.body) {
+    next.status = "needs_review";
+    next.approved_by = null;
+    next.approved_at = null;
+  }
   await saveAction(root, next);
   await logEvent(root, "actions", {
     source_id: next.source_id,
@@ -420,10 +434,10 @@ async function approvalAudit(root, url) {
     };
     if (matchesApprovalAuditFilters(row, filters)) rows.push(row);
   }
-  const byOperator = {};
-  const byType = {};
-  const bySource = {};
-  const byStatus = {};
+  const byOperator = Object.create(null);
+  const byType = Object.create(null);
+  const bySource = Object.create(null);
+  const byStatus = Object.create(null);
   for (const row of rows) {
     byOperator[row.operator] = (byOperator[row.operator] || 0) + 1;
     byType[row.action_type] = (byType[row.action_type] || 0) + 1;
@@ -670,15 +684,7 @@ async function readLogs(root, name, filters = {}) {
   if (!LOGS.includes(name)) throw new Error("unknown log");
   const limit = filters.limit === undefined ? 200 : Math.max(0, Number(filters.limit || 200));
   const offset = Math.max(0, Number(filters.offset || 0));
-  const raw = await readFile(join(root, "logs", `${name}.jsonl`), "utf8").catch(() => "");
-  const rows = raw.trim().split("\n").filter(Boolean).map((line) => {
-    try {
-      return JSON.parse(line);
-    } catch {
-      return { parse_error: true, line };
-    }
-  }).reverse();
-  return Number.isFinite(limit) ? rows.slice(offset, offset + limit) : rows.slice(offset);
+  return readLogPage(join(root, "logs", `${name}.jsonl`), { limit, offset });
 }
 
 async function parseBody(req) {
@@ -725,7 +731,7 @@ function sendHtml(res, html) {
 }
 
 function countBy(rows, field) {
-  const out = {};
+  const out = Object.create(null);
   for (const row of rows) out[row[field] || "unknown"] = (out[row[field] || "unknown"] || 0) + 1;
   return out;
 }
@@ -921,7 +927,7 @@ function dashboardHtml() {
       launchUrl.searchParams.delete("token");
       history.replaceState(null, "", launchUrl.pathname + launchUrl.search + launchUrl.hash);
     }
-    const token = sessionStorage.getItem("intakeToken") || "";
+    let token = sessionStorage.getItem("intakeToken") || "";
     const state = { items: [], itemOffset: 0, itemPageSize: 20, itemsHasMore: false, itemsLoading: false, sources: [], summary: null, selectedQueue: "", sidebarFilter: "", selectedItemIds: new Set(), selectedItemId: null, selectedSourceId: "", selectedRuleId: "", selectedItem: null, selectedView: "items", sourceDiagnostics: {}, pendingSourceAction: "", policyPreview: null, setupProfile: "email", approvalAuditFilters: { operator: "", action_type: "", source_id: "", status: "", date_from: "", date_to: "" } };
     const qs = (s) => document.querySelector(s);
     const el = (tag, attrs = {}, children = []) => {
@@ -1843,8 +1849,9 @@ function dashboardHtml() {
           el("div", { class: "muted", text: "Rotation is in-memory for the active dashboard session. Set INTAKE_DASHBOARD_TOKEN for a stable token on restart." }),
           el("div", { class: "controls" }, [button("Rotate token", async () => {
             const rotated = await api("/api/dashboard-token/rotate", { method: "POST", body: "{}" });
+            token = rotated.token;
             sessionStorage.setItem("intakeToken", rotated.token);
-            history.replaceState(null, "", "/?token=" + encodeURIComponent(rotated.token));
+            history.replaceState(null, "", "/");
             await load();
             state.selectedView = "settings";
             setStatus("Dashboard token rotated");

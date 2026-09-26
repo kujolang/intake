@@ -51,10 +51,11 @@ export async function testEmailConnection(source) {
 export async function syncEmailSource(root, source) {
   const client = await openImap(source);
   const mailbox = source.config?.mailbox || "INBOX";
-  const lock = await client.getMailboxLock(mailbox);
+  let lock;
   const items = [];
   let maxUid = Number(source.cursor?.uid || 0);
   try {
+    lock = await client.getMailboxLock(mailbox);
     const query = nextUidRange(source, client.mailbox);
     if (!query) {
       return { items, cursor: { uid: maxUid, synced_at: new Date().toISOString() } };
@@ -66,7 +67,7 @@ export async function syncEmailSource(root, source) {
       items.push(item);
     }
   } finally {
-    lock.release();
+    lock?.release();
     await client.logout().catch(() => {});
   }
   return { items, cursor: { uid: maxUid, synced_at: new Date().toISOString() } };
@@ -138,10 +139,17 @@ async function itemFromMessage(root, source, message) {
 }
 
 async function openImap(source) {
+  const errors = validateEmailConfig(source);
+  if (errors.length) throw new Error(errors.join("; "));
   const client = new ImapFlow(imapConfig(source));
   client.on("error", () => {});
-  await client.connect();
-  return client;
+  try {
+    await client.connect();
+    return client;
+  } catch (error) {
+    client.close();
+    throw error;
+  }
 }
 
 async function checkImap(source) {

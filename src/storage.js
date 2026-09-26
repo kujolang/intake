@@ -3,7 +3,7 @@ import { basename, join, relative, resolve, sep } from "node:path";
 import { DEFAULT_INTAKE_DIR, LOG_NAMES, REQUIRED_DIRS, STORAGE_SCHEMA_VERSION, VERSION } from "./constants.js";
 import { runMigrations } from "./migrations.js";
 import { redact } from "./redaction.js";
-import { assertSafeId, dateOnly, isoNow, readJson, writeJsonAtomic, writeTextAtomic } from "./util.js";
+import { assertSafeId, dateOnly, isoNow, readJson, serializeWrite, writeJsonAtomic, writeTextAtomic } from "./util.js";
 
 export function resolveIntakeDir(flags = {}) {
   return flags.dir || process.env.INTAKE_DIR || DEFAULT_INTAKE_DIR;
@@ -100,10 +100,12 @@ export async function loadMeta(root) {
 }
 
 export async function saveItem(root, item, options = {}) {
-  await writeJsonAtomic(recordPath(root, "items", item.id, "item id"), item);
-  if (options.rebuildIndex !== false) {
-    await upsertItemIndex(root, item);
-  }
+  return serializeWrite(resolve(root, "index", "items.json"), async () => {
+    await writeJsonAtomic(recordPath(root, "items", item.id, "item id"), item);
+    if (options.rebuildIndex !== false) {
+      await upsertItemIndex(root, item);
+    }
+  });
 }
 
 export async function loadItem(root, id) {
@@ -111,8 +113,10 @@ export async function loadItem(root, id) {
 }
 
 export async function deleteItem(root, id, options = {}) {
-  await rm(recordPath(root, "items", id, "item id"), { force: true });
-  if (options.rebuildIndex !== false) await removeItemFromIndex(root, id);
+  return serializeWrite(resolve(root, "index", "items.json"), async () => {
+    await rm(recordPath(root, "items", id, "item id"), { force: true });
+    if (options.rebuildIndex !== false) await removeItemFromIndex(root, id);
+  });
 }
 
 export async function listItems(root, filters = {}) {
@@ -120,7 +124,8 @@ export async function listItems(root, filters = {}) {
   let names = [];
   try {
     names = await readdir(dir);
-  } catch {
+  } catch (error) {
+    if (error.code !== "ENOENT") throw error;
     return [];
   }
   const items = [];
@@ -156,8 +161,10 @@ export async function listItemDedupeKeys(root) {
 }
 
 export async function saveAction(root, action, options = {}) {
-  await writeJsonAtomic(recordPath(root, "actions", action.id, "action id"), action);
-  if (options.rebuildIndex !== false) await upsertActionIndex(root, action);
+  return serializeWrite(resolve(root, "index", "actions.json"), async () => {
+    await writeJsonAtomic(recordPath(root, "actions", action.id, "action id"), action);
+    if (options.rebuildIndex !== false) await upsertActionIndex(root, action);
+  });
 }
 
 export async function loadAction(root, id) {
@@ -165,8 +172,10 @@ export async function loadAction(root, id) {
 }
 
 export async function deleteAction(root, id, options = {}) {
-  await rm(recordPath(root, "actions", id, "action id"), { force: true });
-  if (options.rebuildIndex !== false) await removeRecordFromIndex(root, "actions", id);
+  return serializeWrite(resolve(root, "index", "actions.json"), async () => {
+    await rm(recordPath(root, "actions", id, "action id"), { force: true });
+    if (options.rebuildIndex !== false) await removeRecordFromIndex(root, "actions", id);
+  });
 }
 
 export async function listActions(root, filters = {}) {
@@ -179,8 +188,10 @@ export async function listActionIndex(root, filters = {}) {
 }
 
 export async function saveLearning(root, learning, options = {}) {
-  await writeJsonAtomic(recordPath(root, "learnings", learning.id, "learning id"), learning);
-  if (options.rebuildIndex !== false) await upsertLearningIndex(root, learning);
+  return serializeWrite(resolve(root, "index", "learnings.json"), async () => {
+    await writeJsonAtomic(recordPath(root, "learnings", learning.id, "learning id"), learning);
+    if (options.rebuildIndex !== false) await upsertLearningIndex(root, learning);
+  });
 }
 
 export async function loadLearning(root, id) {
@@ -188,8 +199,10 @@ export async function loadLearning(root, id) {
 }
 
 export async function deleteLearning(root, id, options = {}) {
-  await rm(recordPath(root, "learnings", id, "learning id"), { force: true });
-  if (options.rebuildIndex !== false) await removeRecordFromIndex(root, "learnings", id);
+  return serializeWrite(resolve(root, "index", "learnings.json"), async () => {
+    await rm(recordPath(root, "learnings", id, "learning id"), { force: true });
+    if (options.rebuildIndex !== false) await removeRecordFromIndex(root, "learnings", id);
+  });
 }
 
 export async function listLearnings(root, filters = {}) {
@@ -205,7 +218,8 @@ async function listRecords(dir, filters) {
   let names = [];
   try {
     names = await readdir(dir);
-  } catch {
+  } catch (error) {
+    if (error.code !== "ENOENT") throw error;
     return [];
   }
   const rows = [];
@@ -311,17 +325,29 @@ export async function logEvent(root, name, entry) {
 }
 
 export async function rebuildItemIndex(root) {
+  return serializeWrite(resolve(root, "index", "items.json"), () => rebuildItemIndexUnlocked(root));
+}
+
+async function rebuildItemIndexUnlocked(root) {
   const items = await listItems(root);
   const compact = items.map(compactItemRow);
   await writeJsonAtomic(join(root, "index", "items.json"), compact);
 }
 
 export async function rebuildActionIndex(root) {
+  return serializeWrite(resolve(root, "index", "actions.json"), () => rebuildActionIndexUnlocked(root));
+}
+
+async function rebuildActionIndexUnlocked(root) {
   const actions = await listRecords(join(root, "actions"), {});
   await writeJsonAtomic(join(root, "index", "actions.json"), actions.map(compactActionRow));
 }
 
 export async function rebuildLearningIndex(root) {
+  return serializeWrite(resolve(root, "index", "learnings.json"), () => rebuildLearningIndexUnlocked(root));
+}
+
+async function rebuildLearningIndexUnlocked(root) {
   const learnings = await listRecords(join(root, "learnings"), {});
   await writeJsonAtomic(join(root, "index", "learnings.json"), learnings.map(compactLearningRow));
 }
@@ -330,7 +356,7 @@ async function upsertItemIndex(root, item) {
   const path = join(root, "index", "items.json");
   const rows = await readJson(path, null);
   if (!Array.isArray(rows)) {
-    await rebuildItemIndex(root);
+    await rebuildItemIndexUnlocked(root);
     return;
   }
   const nextRow = compactItemRow(item);
@@ -342,11 +368,11 @@ async function upsertItemIndex(root, item) {
 }
 
 async function upsertActionIndex(root, action) {
-  await upsertRecordIndex(root, "actions", compactActionRow(action), rebuildActionIndex);
+  await upsertRecordIndex(root, "actions", compactActionRow(action), rebuildActionIndexUnlocked);
 }
 
 async function upsertLearningIndex(root, learning) {
-  await upsertRecordIndex(root, "learnings", compactLearningRow(learning), rebuildLearningIndex);
+  await upsertRecordIndex(root, "learnings", compactLearningRow(learning), rebuildLearningIndexUnlocked);
 }
 
 async function upsertRecordIndex(root, collection, nextRow, rebuild) {
@@ -367,7 +393,7 @@ async function removeItemFromIndex(root, id) {
   const path = join(root, "index", "items.json");
   const rows = await readJson(path, null);
   if (!Array.isArray(rows)) {
-    await rebuildItemIndex(root);
+    await rebuildItemIndexUnlocked(root);
     return;
   }
   await writeJsonAtomic(path, rows.filter((row) => row.id !== id));

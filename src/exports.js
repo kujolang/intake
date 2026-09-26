@@ -66,7 +66,7 @@ export async function exportTotalRecall(root, options = {}) {
 
 function renderStrataNote(day, items, learnings) {
   const by = (field) => countBy(items, field);
-  const tagCounts = {};
+  const tagCounts = Object.create(null);
   for (const item of items) {
     for (const tag of item.tags || []) tagCounts[tag] = (tagCounts[tag] || 0) + 1;
   }
@@ -128,7 +128,7 @@ function renderStrataNote(day, items, learnings) {
 }
 
 function countBy(items, field) {
-  const counts = {};
+  const counts = Object.create(null);
   for (const item of items) counts[item[field] || "unknown"] = (counts[item[field] || "unknown"] || 0) + 1;
   return counts;
 }

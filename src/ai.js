@@ -137,8 +137,14 @@ export function validateOpenAiCompatibleBaseUrl(baseUrl) {
   if (text.includes("@")) return { ok: false, error: "base URL must not include embedded credentials" };
   if (text.includes("?")) return { ok: false, error: "base URL must not include query parameters" };
   if (text.includes("#")) return { ok: false, error: "base URL must not include fragments" };
-  if (text.startsWith("https://")) return { ok: true };
-  if ((text.startsWith("http://localhost") || text.startsWith("http://127.0.0.1")) && process.env.KUJO_AI_SDK_ALLOW_INSECURE_LOCALHOST === "true") {
+  let url;
+  try {
+    url = new URL(text);
+  } catch {
+    return { ok: false, error: "base URL must be a valid absolute URL" };
+  }
+  if (url.protocol === "https:" && url.hostname) return { ok: true };
+  if (url.protocol === "http:" && ["localhost", "127.0.0.1", "[::1]"].includes(url.hostname) && process.env.KUJO_AI_SDK_ALLOW_INSECURE_LOCALHOST === "true") {
     return { ok: true };
   }
   return { ok: false, error: "base URL must be https:// unless insecure localhost is explicitly allowed" };

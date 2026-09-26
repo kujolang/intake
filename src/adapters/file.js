@@ -1,4 +1,5 @@
-import { readFile, readdir, stat } from "node:fs/promises";
+import { lstat, open, readdir } from "node:fs/promises";
+import { constants } from "node:fs";
 import { extname, join } from "node:path";
 import { simpleParser } from "mailparser";
 import { attachmentMetadata } from "../attachments.js";
@@ -23,7 +24,7 @@ export async function syncFileSource(root, source) {
     const path = join(folder, name);
     let info;
     try {
-      info = await stat(path);
+      info = await lstat(path);
     } catch (error) {
       if (error?.code === "ENOENT") continue;
       await logSkippedFile(root, source, name, error);
@@ -35,7 +36,14 @@ export async function syncFileSource(root, source) {
     const nativeId = `${name}:${info.mtimeMs}:${info.size}`;
     if (seen.has(nativeId)) continue;
     try {
-      const buffer = await readFile(path);
+      const file = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW);
+      let buffer;
+      try {
+        if (!(await file.stat()).isFile()) continue;
+        buffer = await file.readFile();
+      } finally {
+        await file.close();
+      }
       const rawId = shortHash(nativeId, 16);
       let item;
       if (ext === ".eml") {
