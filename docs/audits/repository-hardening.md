@@ -103,7 +103,9 @@ No unsupported dependency replacement, safety bypass, suppressed test, weakened 
 - Backups: default inline-secret removal, decompression limit and staging behavior are documented migration considerations; explicit secret inclusion and larger archive bounds remain available.
 - External consumers: no sibling implementation change is required. Custom consumers that enumerate action statuses must accept the two new recovery states. Strata/TotalRecall file formats are unchanged.
 
-## Remaining work and cross-repository follow-ups
+## Remaining work at the initial audit (superseded by follow-up)
+
+The user requested these items next. See [the follow-up report](repository-hardening-followup.md) for implemented store isolation/recovery, resource bounds, browser CI and live checks. The list below preserves the original handoff.
 
 - **P0:** No remaining validated P0 issue in the completed supported single-writer pass.
 - **P1:** H15 needs a store-wide transaction/recovery design before supporting multiple writers or concurrent maintenance. Batch sync failure/retry and snapshot consistency belong in that work; one-writer/quiescent-operation guidance is the current boundary.

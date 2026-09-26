@@ -1,0 +1,14 @@
+{
+  "events": 1000,
+  "trials": 3,
+  "standalone_ms": [
+    3168,
+    4313,
+    3990
+  ],
+  "transaction_ms": [
+    1033,
+    806,
+    739
+  ]
+}

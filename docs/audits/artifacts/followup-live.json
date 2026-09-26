@@ -1,0 +1,11 @@
+{
+  "email": {
+    "ok": true,
+    "imap": true,
+    "smtp": true
+  },
+  "ai": {
+    "ok": true,
+    "fallback": false
+  }
+}

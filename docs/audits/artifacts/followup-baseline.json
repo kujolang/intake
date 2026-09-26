@@ -1,0 +1,28 @@
+{
+  "ok": true,
+  "thresholds_ms": {
+    "dashboard_logs_page_200_warm": 1000,
+    "dashboard_summary_warm": 1500,
+    "dashboard_items_page_100_warm": 1000,
+    "dashboard_actions_page_100_warm": 1000,
+    "dashboard_learnings_page_100_warm": 1000,
+    "dashboard_approval_audit_warm": 1500,
+    "sync_repeated_dedupe": 1000
+  },
+  "timings_ms": {
+    "insert_500_items": 1645,
+    "read_index_page_100": 1157,
+    "insert_500_actions": 3309,
+    "insert_500_learnings": 2864,
+    "write_1000_audit_logs": 570,
+    "sync_250_file_rows": 1646,
+    "sync_repeated_dedupe": 38,
+    "dashboard_logs_page_200_warm": 12,
+    "dashboard_summary_warm": 10,
+    "dashboard_items_page_100_warm": 8,
+    "dashboard_actions_page_100_warm": 35,
+    "dashboard_learnings_page_100_warm": 41,
+    "dashboard_approval_audit_warm": 52
+  },
+  "failures": []
+}
