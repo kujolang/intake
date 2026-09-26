@@ -1,3 +1,4 @@
+import { resourceLimit, readBounded } from "../resource-limits.js";
 import { lstat, open, readdir } from "node:fs/promises";
 import { constants } from "node:fs";
 import { extname, join } from "node:path";
@@ -16,11 +17,16 @@ export function fileCapabilities() {
 export async function syncFileSource(root, source) {
   const folder = source.config?.path;
   if (!folder) throw new Error(`file source ${source.id} is missing config.path`);
+  const maxBytes = resourceLimit(source.config?.max_file_bytes, 25 * 1024 * 1024, "max_file_bytes");
+  const maxBatchBytes = resourceLimit(source.config?.max_batch_bytes, 64 * 1024 * 1024, "max_batch_bytes");
+  const maxBatchItems = resourceLimit(source.config?.max_batch_items, 1000, "max_batch_items");
+  let batchBytes = 0;
   const names = await readdir(folder);
   const seen = new Set(source.cursor?.seen || []);
   const items = [];
 
   for (const name of names.sort()) {
+    if (items.length >= maxBatchItems) break;
     const path = join(folder, name);
     let info;
     try {
@@ -39,8 +45,11 @@ export async function syncFileSource(root, source) {
       const file = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW);
       let buffer;
       try {
-        if (!(await file.stat()).isFile()) continue;
-        buffer = await file.readFile();
+        const opened = await file.stat();
+        if (!opened.isFile()) continue;
+        if (opened.size > maxBytes) throw new Error(`file exceeds max_file_bytes (${maxBytes})`);
+        if (items.length && batchBytes + opened.size > maxBatchBytes) break;
+        buffer = await readBounded(file.createReadStream({ autoClose: false }), Math.min(maxBytes, maxBatchBytes - batchBytes), "file");
       } finally {
         await file.close();
       }
@@ -54,6 +63,7 @@ export async function syncFileSource(root, source) {
         item = await itemFromText(root, source, rawId, nativeId, buffer, name);
       }
       items.push(item);
+      batchBytes += buffer.length;
       seen.add(nativeId);
     } catch (error) {
       if (error?.code === "ENOENT") continue;

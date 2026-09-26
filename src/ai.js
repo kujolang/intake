@@ -1,3 +1,5 @@
+import { resourceLimit, readBounded } from "./resource-limits.js";
+
 export const AI_PROVIDER_PRESETS = {
   none: {
     name: "None",
@@ -71,7 +73,11 @@ export async function classifyWithAi(item, settings) {
   const provider = resolveAiProvider(settings);
   if (!provider.ok) return aiUnavailableResult(item);
 
+  const timeout = resourceLimit(settings.ai_timeout_ms, 30000, "ai_timeout_ms");
+  const maxInput = resourceLimit(settings.ai_max_input_bytes, 1024 * 1024, "ai_max_input_bytes");
+  if (Buffer.byteLength(JSON.stringify(item)) > maxInput) throw new Error("AI input exceeds ai_max_input_bytes; classification was not attempted");
   const response = await fetch(`${provider.base_url.replace(/\/$/, "")}/chat/completions`, {
+    signal: AbortSignal.timeout(timeout),
     method: "POST",
     headers: {
       "content-type": "application/json",
@@ -101,7 +107,10 @@ export async function classifyWithAi(item, settings) {
     })
   });
   if (!response.ok) return aiUnavailableResult(item);
-  const payload = await response.json();
+  const maxResponse = resourceLimit(settings.ai_max_response_bytes, 1024 * 1024, "ai_max_response_bytes");
+  const payload = response.body
+    ? JSON.parse((await readBounded(response.body, maxResponse, "AI response")).toString("utf8"))
+    : await response.json();
   try {
     return JSON.parse(payload.choices?.[0]?.message?.content || "{}");
   } catch {

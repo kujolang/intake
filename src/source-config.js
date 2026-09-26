@@ -1,3 +1,4 @@
+import { resourceLimit } from "./resource-limits.js";
 import { capabilitiesFor } from "./adapters/index.js";
 import { makeSource } from "./models.js";
 import { validateSecretRef } from "./secrets.js";
@@ -38,6 +39,10 @@ export function buildSourceFromInput(input, existing = null) {
     config.port = numberInput(input.port ?? config.port ?? 8766, "slack port", { min: 1, max: 65535, integer: true });
     config.path = input.path ?? config.path ?? "";
     config.workspace_url = input.workspace_url ?? input.workspaceUrl ?? config.workspace_url ?? "";
+  }
+  for (const [key, alias] of [["max_file_bytes", "maxFileBytes"], ["max_message_bytes", "maxMessageBytes"], ["max_batch_bytes", "maxBatchBytes"], ["max_batch_items", "maxBatchItems"]]) {
+    const value = input[key] ?? input[alias];
+    if (value !== undefined) config[key] = resourceLimit(value, 1, key);
   }
   if (input.quarantine_attachments !== undefined || input.quarantineAttachments !== undefined) {
     config.quarantine_attachments = booleanInput(input.quarantine_attachments ?? input.quarantineAttachments, false);

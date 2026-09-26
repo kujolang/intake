@@ -1,3 +1,4 @@
+import { resourceLimit } from "../resource-limits.js";
 import { ImapFlow } from "imapflow";
 import { simpleParser } from "mailparser";
 import nodemailer from "nodemailer";
@@ -49,9 +50,14 @@ export async function testEmailConnection(source) {
 }
 
 export async function syncEmailSource(root, source) {
+  const maxBytes = resourceLimit(source.config?.max_message_bytes, 25 * 1024 * 1024, "max_message_bytes");
+  const maxBatchBytes = resourceLimit(source.config?.max_batch_bytes, 64 * 1024 * 1024, "max_batch_bytes");
+  const maxBatchItems = resourceLimit(source.config?.max_batch_items, 1000, "max_batch_items");
+  let batchBytes = 0;
   const client = await openImap(source);
   const mailbox = source.config?.mailbox || "INBOX";
   let lock;
+  let stopEarly = false;
   const items = [];
   let maxUid = Number(source.cursor?.uid || 0);
   try {
@@ -60,15 +66,28 @@ export async function syncEmailSource(root, source) {
     if (!query) {
       return { items, cursor: { uid: maxUid, synced_at: new Date().toISOString() } };
     }
-    for await (const message of client.fetch(query, { uid: true, envelope: true, source: true, flags: true }, { uid: true })) {
+    for await (const message of client.fetch(query, { uid: true, envelope: true, source: { start: 0, maxLength: maxBytes + 1 }, flags: true }, { uid: true })) {
+      if (items.length >= maxBatchItems) { stopEarly = true; break; }
       if (!message.uid || message.uid <= maxUid) continue;
+      if (!message.source || message.source.length > maxBytes) throw new Error(`message exceeds max_message_bytes (${maxBytes}); cursor preserved`);
+      if (batchBytes + message.source.length > maxBatchBytes) {
+        if (!items.length) throw new Error("message exceeds max_batch_bytes; cursor preserved");
+        stopEarly = true;
+        break;
+      }
+      batchBytes += message.source.length;
       maxUid = Math.max(maxUid, message.uid);
       const item = await itemFromMessage(root, source, message);
       items.push(item);
     }
+  } catch (error) {
+    stopEarly = true;
+    throw error;
   } finally {
     lock?.release();
-    await client.logout().catch(() => {});
+    // A terminated fetch otherwise drains the remaining mailbox before LOGOUT.
+    if (stopEarly) client.close();
+    else await client.logout().catch(() => client.close());
   }
   return { items, cursor: { uid: maxUid, synced_at: new Date().toISOString() } };
 }
