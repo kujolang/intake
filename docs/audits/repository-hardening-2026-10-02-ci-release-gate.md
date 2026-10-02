@@ -56,5 +56,8 @@ The user previously directed this round to skip the unavailable plugin-managed D
 | `node --test tests/shipcheck.test.js` | PASS: 5 tests; actual workflow satisfies the complete-release requirement. |
 | `npm run lint` | PASS. |
 | `git diff --check` | PASS. |
+| `npm run release:check` at `3250fb2` | PASS: 107 tests, smoke, 21 evals, benchmark gates, zero vulnerabilities, shipcheck, doctor, and a 112-file fully tracked package. |
+| `npm exec --yes --package=node@20.19.0 -- node --test tests/*.test.js` | PASS: 107 tests on the minimum supported Node runtime. |
+| `npm run test:browser` | PASS: Chromium token rotation, revocation, authenticated save/reload, URL scrubbing, and zero page errors. |
 
-Full local release, browser, minimum-Node, and remote-CI results are recorded after implementation and report commits are complete.
+Remote-CI results are recorded after the final report commit is pushed.
