@@ -59,5 +59,6 @@ The user previously directed this round to skip the unavailable plugin-managed D
 | `npm run release:check` at `3250fb2` | PASS: 107 tests, smoke, 21 evals, benchmark gates, zero vulnerabilities, shipcheck, doctor, and a 112-file fully tracked package. |
 | `npm exec --yes --package=node@20.19.0 -- node --test tests/*.test.js` | PASS: 107 tests on the minimum supported Node runtime. |
 | `npm run test:browser` | PASS: Chromium token rotation, revocation, authenticated save/reload, URL scrubbing, and zero page errors. |
+| GitHub Actions run `37055104572` at `9359a08` | PASS: the complete release gate ran on Node 20.19, 22, and 24; the Chromium browser job also passed. |
 
-Remote-CI results are recorded after the final report commit is pushed.
+The final documentation-only commit is covered by the same required workflow before handoff.
