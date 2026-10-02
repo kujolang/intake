@@ -142,7 +142,7 @@ function ciWorkflowCheck(workflowText) {
     workflowText.includes("actions/checkout@v7") ? null : "workflow must use the Node 24 checkout action runtime",
     workflowText.includes("actions/setup-node@v7") ? null : "workflow must use the Node 24 setup-node action runtime",
     workflowText.includes("npm ci") ? null : "workflow must run npm ci",
-    workflowText.includes("npm run verify") ? null : "workflow must run npm run verify",
+    workflowText.includes("npm run release:check") ? null : "workflow must run the complete release gate",
     workflowText.includes("20") && workflowText.includes("22") ? null : "workflow must cover Node 20 and 22"
   ].filter(Boolean);
   return check("ci-workflow", failures.length === 0, failures.join("; ") || "CI workflow is wired");

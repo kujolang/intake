@@ -20,8 +20,8 @@ This is the next-session work queue after the latest local verification sweep. I
 - Decide whether this package is ready to remove `"private": true`.
 - Reconfirm package metadata before release: author, repository, homepage, bugs, license, bin, files, engines, publish config, and changelog.
 - Run `intake shipcheck` and review all warnings/blockers.
-- Run the GitHub Actions verify workflow in the remote repository after GitHub billing/spending-limit settings allow jobs to start.
-- Run `npm pack --dry-run` and compare package contents against the release checklist.
+- Confirm the GitHub Actions verify workflow passes `npm run release:check` across the supported Node matrix on the release revision.
+- Run `node scripts/check-package.mjs` and confirm the archive contains only tracked, intentionally reviewable files.
 - Confirm root files are intentional: `README.md`, `CHANGELOG.md`, `LICENSE`, `package.json`, `package-lock.json`, `.github/`, `bin/`, `src/`, `tests/`, `scripts/`, and `docs/`.
 
 ## P0: Operator Evidence
