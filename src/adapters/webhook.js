@@ -5,6 +5,7 @@ import { resolveSecretRef } from "../secrets.js";
 import { saveItem, storeRaw, logEvent } from "../storage.js";
 import { readStreamText, timingSafeEqualString } from "../util.js";
 import { classifyAndSave } from "../workflow.js";
+import { recordRequestError, requestErrorPayload } from "../request-errors.js";
 
 const MAX_WEBHOOK_BODY_BYTES = 1024 * 1024;
 
@@ -53,7 +54,7 @@ export async function startWebhookServer(root, source, options = {}) {
       }
       const token = req.headers.authorization?.replace(/^Bearer\s+/i, "") || new URL(req.url, `http://localhost:${port}`).searchParams.get("token");
       if (!timingSafeEqualString(token, expectedToken)) {
-        await logEvent(root, "errors", { source_id: source.id, event_type: "webhook_auth_failed", status: "blocked" });
+        await recordRequestError(root, { source_id: source.id, event_type: "webhook_auth_failed", status: "blocked" });
         res.writeHead(401);
         res.end("unauthorized");
         return;
@@ -69,9 +70,9 @@ export async function startWebhookServer(root, source, options = {}) {
       res.writeHead(202, { "content-type": "application/json" });
       res.end(JSON.stringify({ ok: true, item_id: item.id }));
     } catch (error) {
-      await logEvent(root, "errors", { source_id: source.id, event_type: "webhook_error", status: "failed", error: error.message });
+      const logged = await recordRequestError(root, { source_id: source.id, event_type: "webhook_error", status: "failed", error: error.message });
       res.writeHead(error.statusCode || 400);
-      res.end(JSON.stringify({ ok: false, error: error.message }));
+      res.end(JSON.stringify(requestErrorPayload(error, logged, { includeOk: true })));
     }
   });
   await new Promise((resolve, reject) => {

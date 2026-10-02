@@ -16,6 +16,7 @@ import { evaluatePolicy } from "./policy.js";
 import { appendSourceSyncHistory, appendSourceTestHistory } from "./source-history.js";
 import { approveAction, classifyAndSave, createLearning, proposeDraft, rejectAction, runAction, setAutoActions, syncAll } from "./workflow.js";
 import { isoNow, parseCsv, readStreamText, timingSafeEqualString, uniq } from "./util.js";
+import { recordRequestError, requestErrorPayload } from "./request-errors.js";
 
 const LOGS = ["sync", "normalize", "classify", "policy", "actions", "audit", "errors"];
 const MAX_DASHBOARD_BODY_BYTES = 1024 * 1024;
@@ -116,8 +117,8 @@ export async function startDashboard(root, options = {}) {
       const result = await withStoreLock(root, route);
       return sendJson(res, result);
     } catch (error) {
-      await logEvent(root, "errors", { event_type: "dashboard_error", status: "failed", error: error.message });
-      return sendJson(res, { error: error.message }, error.statusCode || 500);
+      const logged = await recordRequestError(root, { event_type: "dashboard_error", status: "failed", error: error.message });
+      return sendJson(res, requestErrorPayload(error, logged), error.statusCode || 500);
     }
   };
   const server = options.tlsCert && options.tlsKey
