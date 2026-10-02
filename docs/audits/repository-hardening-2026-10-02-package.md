@@ -1,6 +1,6 @@
 # Intake repository hardening follow-up — package boundary
 
-Date: 2026-10-02. Repository: `kujolang/intake`. Branch: `main`. Starting SHA: `e2e986500e6beeb22fa312382bacb70f1fbe7b80`. Ending implementation SHA: `df23f7c`. The report commit follows the implementation commit and therefore cannot include its own SHA.
+Date: 2026-10-02. Repository: `kujolang/intake`. Branch: `main`. Starting SHA: `e2e986500e6beeb22fa312382bacb70f1fbe7b80`. Ending implementation SHA: `211ace2`. The report update follows the implementation commit and therefore cannot include its own SHA.
 
 ## Repository and baseline
 
@@ -20,12 +20,15 @@ At the starting revision, `npm run release:check` passed lint, 105 tests, smoke,
 | P02 | P2 | CI / output efficiency | The release check printed the entire 142-file npm inventory but did not turn the undesired entries into a failing gate. | The old `release:check` ended with bare `npm pack --dry-run`. | Replace it with a JSON-based checker that fails on transient audit logs and emits a compact receipt. | Fixed and regression tested. |
 | P03 | P2 | Documentation accuracy | Packaging documentation and shipcheck still described remote CI as blocked by billing, after verified runs had passed. | Current GitHub Actions evidence contradicted `docs/packaging-decision.md` and the old blocker wording. | Record passing remote CI and make shipcheck accurately state that remote evidence is outside its local scope. | Fixed. |
 | P04 | Needs more evidence | Dependency compatibility | ImapFlow 2.x is available but is a major upgrade. | `npm outdated --json`; the existing IMAP contract and Node support need compatibility validation before adoption. | Preserve 1.7.8 for this pass. | Deferred. |
+| P05 | P2 | CI supply chain | The verification workflow still used action releases backed by the deprecated Node 20 action runtime and relied on default token permissions. | GitHub run `37048650548` passed but emitted the Node 20 action-runtime deprecation annotation for checkout/setup-node. | Upgrade official checkout/setup-node actions to v7, declare read-only contents permission, and ratchet shipcheck. | Fixed; final remote CI verifies compatibility. |
 
 ## Changes implemented
 
 `package.json` now excludes `docs/audits/artifacts/**/*.log` from the package allowlist while retaining reviewed, tracked audit reports and evidence. `scripts/check-package.mjs` runs `npm pack --dry-run --json`, rejects malformed inventories and any transient audit log that reaches the archive, and emits only filename, byte sizes, and file count. `release:check` uses this gate, and shipcheck requires both the exclusion and the gate.
 
 The new behavior is covered by a package-level regression test that executes the actual pack gate. Documentation now describes the gate and the current remote-CI state. Files changed: `package.json`, `scripts/check-package.mjs`, `src/shipcheck.js`, `tests/shipcheck.test.js`, and `docs/packaging-decision.md`.
+
+The verification workflows now use `actions/checkout@v7` and `actions/setup-node@v7`, whose action runtime is Node 24, and the main verification workflow explicitly grants only `contents: read`. Shipcheck ratchets these requirements so deprecated action runtimes or implicit token permissions do not silently return.
 
 ## Performance and efficiency
 
@@ -42,7 +45,7 @@ The new package receipt is five fields rather than a full per-file listing durin
 
 ## Security and compatibility
 
-The package manifest is a release trust boundary: ignored local command transcripts can contain machine paths, environment-specific diagnostics, or other data that was never reviewed for publication. The new allowlist exclusion prevents those transcripts from entering the archive, and the executable gate prevents silent regression.
+The package manifest is a release trust boundary: ignored local command transcripts can contain machine paths, environment-specific diagnostics, or other data that was never reviewed for publication. The new allowlist exclusion prevents those transcripts from entering the archive, and the executable gate prevents silent regression. CI now uses official Node 24 action runtimes with an explicit read-only repository token permission.
 
 A plugin-managed Deep Security Scan was requested as part of this pass but did not start because the parent host did not provide the managed filesystem permission profile required for a read-only worker. No new scan or no-findings claim is made. The previously tracked security artifacts remain historical evidence for their recorded revision only. The Kujo repository ShipCheck Ability was also unavailable because its MCP endpoint returned HTTP 404; local `intake shipcheck` and the full release gate were used as repository evidence, not represented as an Ability receipt.
 
@@ -77,4 +80,4 @@ None required. The unavailable Kujo MCP endpoint and the host permission profile
 | `npm exec --yes --package=node@20.19.0 -- node --test tests/*.test.js` | PASS: all 106 tests on the minimum supported Node runtime. |
 | `npm run test:browser` | PASS: Chromium token rotation, revoked-token rejection, authenticated save/reload, URL scrubbing, and no page errors. |
 
-The implementation is committed at `df23f7c`. Remote CI evidence belongs to the final pushed revision and is recorded after this report is committed.
+The package boundary fix is committed at `df23f7c`; the CI action-runtime hardening is committed at `211ace2`. Remote CI evidence belongs to the final pushed revision and is recorded after this report update is committed.
