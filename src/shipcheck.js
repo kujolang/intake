@@ -117,17 +117,19 @@ function packageFilesCheck(pkg) {
   return check("package-files", missing.length === 0, missing.length ? `package files missing ${missing.join(", ")}` : "package files whitelist is complete");
 }
 
-function releaseScriptsCheck(pkg) {
+export function releaseScriptsCheck(pkg) {
   const scripts = pkg.scripts || {};
   const required = ["lint", "test", "smoke", "verify", "bench:gate", "release:check"];
   const missing = required.filter((name) => !scripts[name]);
   const verifyIncludesBench = String(scripts.verify || "").includes("bench:gate");
+  const verifyIncludesDocLinks = String(scripts.verify || "").includes("docs:links");
   const releaseIncludesVerify = String(scripts["release:check"] || "").includes("npm run verify");
   const releaseIncludesDoctor = String(scripts["release:check"] || "").includes("doctor");
   const releaseIncludesPack = String(scripts["release:check"] || "").includes("check-package.mjs");
   const failures = [
     ...missing.map((name) => `missing ${name}`),
     verifyIncludesBench ? null : "verify must include bench:gate",
+    verifyIncludesDocLinks ? null : "verify must include the documentation link gate",
     releaseIncludesVerify ? null : "release:check must run verify",
     releaseIncludesDoctor ? null : "release:check must run doctor",
     releaseIncludesPack ? null : "release:check must run the package-content gate"

@@ -660,9 +660,8 @@ node bin/intake.js shipcheck
 
 Review:
 
-- [Release checklist](release-checklist.md)
-- [Production readiness roadmap](production-readiness-roadmap.md)
-- [Enterprise readiness checklist](enterprise-readiness-checklist.md)
+- [Packaging decision and release gates](packaging-decision.md)
+- [Next production readiness sweep](next-production-readiness-sweep.md)
 
 ## 25. First-Day Task List
 
@@ -680,4 +679,3 @@ For a new developer, complete this sequence:
 10. Run `npm test`.
 11. Read `src/workflow.js`, `src/storage.js`, `src/dashboard.js`, and `src/adapters/index.js`.
 12. Read the security and policy docs before touching action execution or source writeback.
-

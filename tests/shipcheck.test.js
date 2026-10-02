@@ -5,7 +5,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { initStore } from "../src/storage.js";
-import { runShipcheck } from "../src/shipcheck.js";
+import { releaseScriptsCheck, runShipcheck } from "../src/shipcheck.js";
 import { findUntrackedPackageFiles } from "../scripts/check-package.mjs";
 
 test("shipcheck reports local release health and external enterprise blockers", async () => {
@@ -67,4 +67,18 @@ test("package gate permits only tracked files", () => {
 test("package inventory detects arbitrary untracked entries", () => {
   const files = [{ path: "package.json" }, { path: "docs/private-draft.txt" }];
   assert.deepEqual(findUntrackedPackageFiles(files, new Set(["package.json"])), ["docs/private-draft.txt"]);
+});
+
+test("shipcheck requires documentation links in the verification gate", () => {
+  const scripts = {
+    lint: "lint",
+    test: "test",
+    smoke: "smoke",
+    verify: "npm run lint && npm run bench:gate",
+    "bench:gate": "bench",
+    "release:check": "npm run verify && intake doctor && node scripts/check-package.mjs"
+  };
+  assert.equal(releaseScriptsCheck({ scripts }).status, "fail");
+  scripts.verify += " && npm run docs:links";
+  assert.equal(releaseScriptsCheck({ scripts }).status, "ok");
 });

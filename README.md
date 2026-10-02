@@ -57,7 +57,7 @@ Production-oriented safeguards already in place:
 - Compact sorted indexes for warm dashboard item, action, and learning reads.
 - Default policy blocks direct `send_response`.
 
-Before calling it enterprise-ready for a team or customer deployment, validate the roadmap in [docs/production-readiness-roadmap.md](docs/production-readiness-roadmap.md) and the newest review list in [docs/intake-next-enterprise-readiness-review-2026-06-19.md](docs/intake-next-enterprise-readiness-review-2026-06-19.md).
+Before calling it enterprise-ready for a team or customer deployment, validate the remaining work in the [next production-readiness sweep](docs/next-production-readiness-sweep.md).
 
 ## Install
 
@@ -268,9 +268,8 @@ Policy and safety docs:
 - [Policy engine](docs/policy-engine.md)
 - [Prompt-injection defense](docs/prompt-injection-defense.md)
 - [Adapter authoring guide](docs/adapter-authoring.md)
-- [Release checklist](docs/release-checklist.md)
+- [Packaging decision and release gates](docs/packaging-decision.md)
 - [Performance baselines](docs/performance-baselines.md)
-- [Enterprise readiness checklist](docs/enterprise-readiness-checklist.md)
 - [End-to-end tutorial](docs/end-to-end-tutorial.md)
 - [Why Intake showcases Kujo](docs/why-kujo-showcase.md)
 - [Dashboard CSRF posture](docs/dashboard-csrf-posture.md)
@@ -278,7 +277,6 @@ Policy and safety docs:
 - [Restore drill](docs/restore-drill.md)
 - [Example packs](docs/example-packs.md)
 - [Next production readiness sweep](docs/next-production-readiness-sweep.md)
-- [Next enterprise readiness review](docs/intake-next-enterprise-readiness-review-2026-06-19.md)
 
 ## Storage
 
