@@ -273,6 +273,7 @@ Policy and safety docs:
 - [End-to-end tutorial](docs/end-to-end-tutorial.md)
 - [Why Intake showcases Kujo](docs/why-kujo-showcase.md)
 - [Dashboard CSRF posture](docs/dashboard-csrf-posture.md)
+- [Live provider validation](docs/live-provider-validation.md)
 - [Attachment policy](docs/attachment-policy.md)
 - [Restore drill](docs/restore-drill.md)
 - [Example packs](docs/example-packs.md)

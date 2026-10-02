@@ -25,12 +25,23 @@ The Settings view includes a security posture panel showing whether the active r
 Views:
 
 - Sources: guided first-source setup, add/edit email, file, webhook, Slack, GitHub, Jira, Linear, ClickUp, and manual sources; test sources; sync sources; enable or disable sources.
-- Items: queue filters, risk/status filters, item detail, normalized text, raw payload, AI summary, tags, queue changes, classify/draft/learn/resolve/block controls.
-- Actions: approve, reject, and run actions; filter approval audit rows by operator, source, action type, status, and date; export approval audit CSV.
+- Inbox: familiar Inbox, Later, Mine, Unassigned, and Done views; queue filters; item detail; assignment; snooze; classify, draft, learn, resolve, and block controls.
+- Approvals: approve, reject, and run actions; filter approval audit rows by operator, source, action type, status, and date; export approval audit CSV.
 - Learnings: review generated learning records.
 - Rules: inspect deterministic rules.
 - Audit: inspect JSONL operational logs.
-- Work surface: draft body, queue/tag controls, raw payload inspection.
+- Reply & actions: draft body, assignment, snooze, queue/tag controls, and raw payload inspection.
+
+Keyboard shortcuts:
+
+- `Command/Ctrl+K` or `?`: open Quick commands.
+- `/`: focus inbox search.
+- `j` / `k`: move to the next or previous loaded item.
+- `e`: mark the selected item Done.
+- `s`: snooze the selected item until tomorrow morning.
+- `g i`, `g l`, `g a`: go to Inbox, Later, or Approvals.
+
+On a narrow screen, use **Inbox views** to open the filters and saved views. Security posture, dashboard-token rotation, and policy controls live under **Settings → Advanced settings** so the everyday operator path stays focused.
 
 Auto-actions remain off by default. The dashboard exposes the same global kill switch as `intake auto-actions`.
 

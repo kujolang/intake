@@ -60,6 +60,7 @@ export function makeItem(input) {
     tags: uniq(input.tags || []),
     assigned_agent: input.assigned_agent || null,
     assigned_human: input.assigned_human || null,
+    snoozed_until: input.snoozed_until || null,
     ai_summary: input.ai_summary || null,
     ai_confidence: input.ai_confidence || null,
     suggested_actions: input.suggested_actions || [],

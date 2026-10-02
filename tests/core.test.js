@@ -323,6 +323,8 @@ test("item index supports filtered pagination for dashboard list views", async (
     assert.equal(second.length, 1);
     assert.ok(first[0].id);
     assert.ok(first[0].dedupe_key);
+    assert.equal(first[0].assigned_human, null);
+    assert.equal(first[0].snoozed_until, null);
     assert.equal(first[0].body, undefined);
     const invalidLimit = await listItemIndex(root, { queue: "support", limit: "not-a-number" });
     assert.equal(invalidLimit.length, 3);

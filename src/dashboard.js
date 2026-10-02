@@ -27,6 +27,7 @@ const ICON_NAMES = [
   "check",
   "clipboard-list",
   "cloud-download",
+  "clock",
   "database",
   "device-floppy",
   "edit",
@@ -37,6 +38,7 @@ const ICON_NAMES = [
   "list",
   "lock",
   "mail",
+  "menu-2",
   "paperclip",
   "player-play",
   "plug-connected",
@@ -51,6 +53,7 @@ const ICON_NAMES = [
   "shield",
   "tag",
   "user",
+  "user-minus",
   "x"
 ];
 const ICONS = Object.fromEntries(ICON_NAMES.map((name) => [name, loadTablerIcon(name)]));
@@ -204,13 +207,19 @@ async function summary(root) {
     listLearningIndex(root),
     loadSettings(root)
   ]);
-  const activeItems = items.filter((item) => item.status !== "resolved" && item.queue !== "resolved");
+  const isResolved = (item) => item.status === "resolved" || item.queue === "resolved";
+  const isSnoozed = (item) => Boolean(item.snoozed_until && Date.parse(item.snoozed_until) > Date.now());
+  const unresolvedItems = items.filter((item) => !isResolved(item));
+  const activeItems = unresolvedItems.filter((item) => !isSnoozed(item));
   const archivedItems = items.filter((item) => item.status === "resolved" || item.queue === "resolved");
   return {
     counts: {
       items: items.length,
       active_items: activeItems.length,
       archived_items: archivedItems.length,
+      later_items: unresolvedItems.filter(isSnoozed).length,
+      mine_items: activeItems.filter((item) => item.assigned_human === "local-operator").length,
+      unassigned_items: activeItems.filter((item) => !item.assigned_human && !item.assigned_agent).length,
       actions: actions.length,
       learnings: learnings.length,
       needs_review: items.filter((item) => item.status === "needs_review" || item.queue === "human-review").length,
@@ -255,8 +264,24 @@ async function mutateItem(root, itemId, action, body) {
   }
   if (action === "assign") {
     const field = body.kind === "human" ? "assigned_human" : "assigned_agent";
-    const next = { ...item, [field]: body.assignee, status: "assigned", updated_at: isoNow() };
+    const assignee = nullableString(body.assignee);
+    const next = { ...item, [field]: assignee, status: assignee ? "assigned" : "queued", updated_at: isoNow() };
     await saveItem(root, next);
+    await logEvent(root, "audit", { source_id: item.source_id, item_id: item.id, event_type: assignee ? "dashboard_item_assigned" : "dashboard_item_unassigned", output_refs: assignee ? [assignee] : [] });
+    return { item: next };
+  }
+  if (action === "snooze") {
+    const until = nullableString(body.until);
+    if (!until || !Number.isFinite(Date.parse(until)) || Date.parse(until) <= Date.now()) throw httpError(400, "snooze requires a future ISO timestamp");
+    const next = { ...item, snoozed_until: new Date(until).toISOString(), updated_at: isoNow() };
+    await saveItem(root, next);
+    await logEvent(root, "audit", { source_id: item.source_id, item_id: item.id, event_type: "dashboard_item_snoozed", output_refs: [next.snoozed_until] });
+    return { item: next };
+  }
+  if (action === "unsnooze") {
+    const next = { ...item, snoozed_until: null, updated_at: isoNow() };
+    await saveItem(root, next);
+    await logEvent(root, "audit", { source_id: item.source_id, item_id: item.id, event_type: "dashboard_item_unsnoozed" });
     return { item: next };
   }
   throw new Error("unknown item action");
@@ -664,6 +689,7 @@ async function requireItem(root, id) {
 
 function filtersFrom(url) {
   return {
+    view: url.searchParams.get("view") || undefined,
     queue: url.searchParams.get("queue") || undefined,
     source_id: url.searchParams.get("source") || undefined,
     tag: url.searchParams.get("tag") || undefined,
@@ -797,6 +823,7 @@ function dashboardHtml() {
     .queue-btn.active { border-color: var(--accent); color: var(--accent); background: #e8f3ef; }
     .toolbar { display: flex; gap: 8px; align-items: center; justify-content: space-between; margin-bottom: 14px; }
     .tabs { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 12px; }
+    .mobile-menu { display: none; }
     .tab { background: #ffffff; }
     .tab.active { background: var(--ink); color: white; border-color: var(--ink); }
     .split { display: grid; grid-template-columns: minmax(280px, 38%) minmax(320px, 1fr); gap: 12px; min-height: 70vh; }
@@ -844,6 +871,15 @@ function dashboardHtml() {
     .settings-grid label > span { color: var(--muted); font-size: 13px; padding-top: 8px; }
     .settings-grid input, .settings-grid select { width: 100%; }
     .settings-note { border-left: 3px solid var(--accent); padding: 8px 10px; background: #eef6f3; color: var(--muted); font-size: 13px; line-height: 1.4; }
+    details.advanced { border: 1px solid var(--line); border-radius: 8px; background: white; }
+    details.advanced > summary { cursor: pointer; font-weight: 700; padding: 14px; }
+    details.advanced > .stack { padding: 0 14px 14px; }
+    dialog { width: min(560px, calc(100vw - 32px)); border: 1px solid var(--line); border-radius: 10px; padding: 0; box-shadow: 0 22px 70px rgba(23, 33, 31, .24); }
+    dialog::backdrop { background: rgba(23, 33, 31, .38); }
+    .command-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 14px; border-bottom: 1px solid var(--line); }
+    .command-list { display: grid; gap: 6px; padding: 12px; }
+    .command-list button { justify-content: space-between; width: 100%; }
+    kbd { border: 1px solid var(--line); border-bottom-width: 2px; border-radius: 4px; background: var(--paper); padding: 1px 5px; color: var(--muted); font-size: 11px; }
     .rule-match { display: grid; gap: 3px; border: 1px solid var(--line); border-radius: 7px; padding: 8px; background: #fbfdfc; }
     .hidden { display: none !important; }
     .stack { display: grid; gap: 10px; }
@@ -869,7 +905,7 @@ function dashboardHtml() {
     .diagnostic-row .skip { color: var(--muted); font-weight: 700; }
     @media (max-width: 1120px) { .app { grid-template-columns: 240px 1fr; } .sidepanel { grid-column: 1 / -1; border-left: 0; border-top: 1px solid var(--line); } }
     @media (max-width: 960px) { .setup-steps, .preset-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
-    @media (max-width: 760px) { .app, .split { display: block; } aside, main, .sidepanel { border: 0; border-bottom: 1px solid var(--line); } .list { margin-bottom: 12px; } .source-form, .setup-steps, .preset-grid, .settings-grid, .filter-grid, .editor-grid { grid-template-columns: 1fr; } .settings-grid label { display: grid; gap: 4px; } .source-form .wide, .diagnostics, .editor-grid .wide { grid-column: auto; } .diagnostic-row { grid-template-columns: 1fr; } }
+    @media (max-width: 760px) { .app, .split { display: block; } aside { display: none; } body.nav-open aside { display: block; } aside, main, .sidepanel { border: 0; border-bottom: 1px solid var(--line); } main { padding: 12px; } .mobile-menu { display: inline-flex; } .toolbar { align-items: flex-start; } .tabs { flex: 1; flex-wrap: nowrap; overflow-x: auto; padding-bottom: 4px; } .tab { white-space: nowrap; } .list { margin-bottom: 12px; } .quick-actions { grid-template-columns: repeat(3, minmax(0, 1fr)); } .source-form, .setup-steps, .preset-grid, .settings-grid, .filter-grid, .editor-grid { grid-template-columns: 1fr; } .settings-grid label { display: grid; gap: 4px; } .source-form .wide, .diagnostics, .editor-grid .wide { grid-column: auto; } .diagnostic-row { grid-template-columns: 1fr; } }
   </style>
 </head>
 <body>
@@ -884,7 +920,7 @@ function dashboardHtml() {
       </div>
       <div class="metrics" id="metrics"></div>
       <div class="filters">
-        <input id="searchBox" placeholder="Filter text">
+        <input id="searchBox" aria-label="Search inbox" placeholder="Search inbox (/)" autocomplete="off">
         <select id="riskFilter"><option value="">Any risk</option><option>low</option><option>medium</option><option>high</option><option>critical</option></select>
         <select id="statusFilter"><option value="">Any status</option><option>new</option><option>triaged</option><option>needs_review</option><option>draft_ready</option><option>resolved</option><option>blocked</option></select>
       </div>
@@ -892,33 +928,45 @@ function dashboardHtml() {
     </aside>
     <main>
       <div class="toolbar">
+        <button id="mobileMenuBtn" class="mobile-menu icon-btn" title="Inbox views" aria-label="Inbox views" data-icon="menu-2"></button>
         <div class="tabs">
-          <button class="tab active" data-view="items" data-icon="inbox">Items</button>
+          <button class="tab active" data-view="items" data-icon="inbox">Inbox</button>
           <button class="tab" data-view="sources" data-icon="plug-connected">Sources</button>
-          <button class="tab" data-view="actions" data-icon="bolt">Actions</button>
+          <button class="tab" data-view="actions" data-icon="bolt">Approvals</button>
           <button class="tab" data-view="learnings" data-icon="brain">Learnings</button>
           <button class="tab" data-view="rules" data-icon="ruler">Rules</button>
           <button class="tab" data-view="logs" data-icon="clipboard-list">Audit</button>
           <button class="tab" data-view="settings" data-icon="settings">Settings</button>
         </div>
-        <div class="statusline" id="status"></div>
+        <div class="statusline" id="status" role="status" aria-live="polite"></div>
       </div>
       <section id="itemsView" class="split">
         <div class="list" id="itemList"></div>
         <div class="detail" id="itemDetail"></div>
       </section>
       <section id="sourcesView" class="surface hidden"><h2>Sources</h2><div id="sourceEditor"></div><div class="stack" id="sourcesList"></div></section>
-      <section id="actionsView" class="surface hidden"><h2>Actions</h2><div class="stack" id="actionsList"></div></section>
+      <section id="actionsView" class="surface hidden"><h2>Approvals</h2><div class="stack" id="actionsList"></div></section>
       <section id="learningsView" class="surface hidden"><h2>Learnings</h2><div class="stack" id="learningsList"></div></section>
       <section id="rulesView" class="surface hidden"><h2>Rules</h2><div class="stack" id="rulesList"></div></section>
       <section id="logsView" class="surface hidden"><h2>Audit Log</h2><div class="formrow"><select id="logSelect"><option>audit</option><option>actions</option><option>classify</option><option>sync</option><option>normalize</option><option>policy</option><option>errors</option></select></div><div class="stack" id="logsList"></div></section>
       <section id="settingsView" class="surface hidden"><h2>Settings</h2><div class="stack" id="settingsPanel"></div></section>
     </main>
     <section class="sidepanel">
-      <h2>Work Surface</h2>
+      <h2>Reply &amp; actions</h2>
       <div id="workSurface" class="stack"></div>
     </section>
   </div>
+  <dialog id="commandPalette" aria-labelledby="commandTitle">
+    <div class="command-head"><b id="commandTitle">Quick commands</b><button id="closeCommands" class="icon-btn" aria-label="Close commands" data-icon="x"></button></div>
+    <div class="command-list">
+      <button data-command="inbox"><span>Go to Inbox</span><kbd>g i</kbd></button>
+      <button data-command="later"><span>Go to Later</span><kbd>g l</kbd></button>
+      <button data-command="approvals"><span>Go to Approvals</span><kbd>g a</kbd></button>
+      <button data-command="done"><span>Mark selected item done</span><kbd>e</kbd></button>
+      <button data-command="snooze"><span>Snooze selected item until tomorrow</span><kbd>s</kbd></button>
+      <button data-command="search"><span>Search inbox</span><kbd>/</kbd></button>
+    </div>
+  </dialog>
   <script>
     const ICONS = ${JSON.stringify(ICONS)};
     const AI_PROVIDER_PRESETS = ${JSON.stringify(AI_PROVIDER_PRESETS)};
@@ -930,7 +978,7 @@ function dashboardHtml() {
       history.replaceState(null, "", launchUrl.pathname + launchUrl.search + launchUrl.hash);
     }
     let token = sessionStorage.getItem("intakeToken") || "";
-    const state = { items: [], itemOffset: 0, itemPageSize: 20, itemsHasMore: false, itemsLoading: false, sources: [], summary: null, selectedQueue: "", sidebarFilter: "", selectedItemIds: new Set(), selectedItemId: null, selectedSourceId: "", selectedRuleId: "", selectedItem: null, selectedView: "items", sourceDiagnostics: {}, pendingSourceAction: "", policyPreview: null, setupProfile: "email", approvalAuditFilters: { operator: "", action_type: "", source_id: "", status: "", date_from: "", date_to: "" } };
+    const state = { items: [], itemOffset: 0, itemPageSize: 20, itemsHasMore: false, itemsLoading: false, sources: [], summary: null, inboxView: "inbox", selectedQueue: "", sidebarFilter: "", selectedItemIds: new Set(), selectedItemId: null, selectedSourceId: "", selectedRuleId: "", selectedItem: null, selectedView: "items", sourceDiagnostics: {}, pendingSourceAction: "", policyPreview: null, setupProfile: "email", shortcutPrefix: "", approvalAuditFilters: { operator: "", action_type: "", source_id: "", status: "", date_from: "", date_to: "" } };
     const qs = (s) => document.querySelector(s);
     const el = (tag, attrs = {}, children = []) => {
       const node = document.createElement(tag);
@@ -980,6 +1028,7 @@ function dashboardHtml() {
       const risk = qs("#riskFilter").value;
       const status = qs("#statusFilter").value;
       if (state.selectedQueue) params.set("queue", state.selectedQueue);
+      params.set("view", state.inboxView);
       if (risk) params.set("risk", risk);
       if (status) params.set("status", status);
       return params.toString();
@@ -1031,12 +1080,11 @@ function dashboardHtml() {
     }
     function renderShell() {
       const m = state.summary.counts;
-      const archivedCount = m.archived_items || state.summary.queues.resolved || state.summary.statuses.resolved || 0;
       qs("#metrics").replaceChildren(
-        metric(m.active_items ?? m.items, "Items", "inbox", "items"),
-        metric(m.active_needs_review ?? m.needs_review, "Review", "shield", "review"),
+        metric(m.active_items ?? m.items, "Inbox", "inbox", "items"),
+        metric(m.later_items || 0, "Later", "clock", "later"),
         metric(m.active_high_risk ?? m.high_risk, "High risk", "alert-triangle", "high_risk"),
-        metric(m.actions, "Actions", "bolt", "actions")
+        metric(m.actions, "Approvals", "bolt", "actions")
       );
       const kill = qs("#killSwitch");
       const killLabel = state.summary.settings.auto_actions_enabled ? "Auto-actions on" : "Auto-actions off";
@@ -1045,9 +1093,14 @@ function dashboardHtml() {
       kill.classList.toggle("on", state.summary.settings.auto_actions_enabled);
       const queues = Object.entries(state.summary.queues).filter(([q]) => q !== "resolved").sort((a, b) => b[1] - a[1]);
       qs("#queues").replaceChildren(
-        queueButton("", "All queues", m.active_items ?? m.items),
+        inboxButton("inbox", "Inbox", m.active_items ?? m.items),
+        inboxButton("later", "Later", m.later_items || 0),
+        inboxButton("mine", "Mine", m.mine_items || 0),
+        inboxButton("unassigned", "Unassigned", m.unassigned_items || 0),
+        inboxButton("done", "Done", m.archived_items || 0),
+        el("div", { class: "muted", text: "Queues" }),
+        queueButton("", "All queues", state.inboxView === "done" ? m.archived_items : m.active_items),
         ...queues.map(([q, n]) => queueButton(q, q, n)),
-        queueButton("resolved", "Archived", archivedCount)
       );
     }
     function metric(value, label, iconName, mode) {
@@ -1055,22 +1108,35 @@ function dashboardHtml() {
     }
     function metricClick(mode) {
       state.selectedView = mode === "actions" ? "actions" : "items";
-      state.sidebarFilter = mode === "items" || mode === "actions" ? "" : mode;
+      state.inboxView = mode === "later" ? "later" : "inbox";
+      state.sidebarFilter = mode === "items" || mode === "actions" || mode === "later" ? "" : mode;
       state.selectedQueue = "";
       qs("#searchBox").value = "";
       qs("#riskFilter").value = "";
       qs("#statusFilter").value = "";
       resetItems().then(() => { renderCurrent(); renderShell(); }).catch((error) => setStatus(error.message));
     }
+    function inboxButton(value, label, count) {
+      return el("button", { class: "queue-btn" + (state.inboxView === value && !state.selectedQueue ? " active" : ""), onclick: () => switchInboxView(value) }, [el("span", { text: label }), el("b", { text: count })]);
+    }
+    function switchInboxView(value) {
+      state.selectedView = "items";
+      state.inboxView = value;
+      state.selectedQueue = "";
+      state.sidebarFilter = "";
+      state.selectedItemId = null;
+      state.selectedItem = null;
+      document.body.classList.remove("nav-open");
+      resetItems().then(() => { renderCurrent(); renderShell(); }).catch((error) => setStatus(error.message));
+    }
     function queueButton(value, label, count) {
-      return el("button", { class: "queue-btn" + (state.selectedQueue === value ? " active" : ""), onclick: () => { state.selectedQueue = value; state.sidebarFilter = ""; resetItems().then(() => { renderCurrent(); renderShell(); }).catch((error) => setStatus(error.message)); } }, [el("span", { text: label }), el("b", { text: count })]);
+      return el("button", { class: "queue-btn" + (state.selectedQueue === value ? " active" : ""), onclick: () => { state.selectedQueue = value; state.sidebarFilter = ""; document.body.classList.remove("nav-open"); resetItems().then(() => { renderCurrent(); renderShell(); }).catch((error) => setStatus(error.message)); } }, [el("span", { text: label }), el("b", { text: count })]);
     }
     function filteredItems() {
       const text = qs("#searchBox").value.toLowerCase();
       const risk = qs("#riskFilter").value;
       const status = qs("#statusFilter").value;
       return state.items.filter((item) =>
-        ((state.selectedQueue || status === "resolved") || (item.status !== "resolved" && item.queue !== "resolved")) &&
         (state.sidebarFilter !== "review" || item.status === "needs_review" || item.queue === "human-review") &&
         (state.sidebarFilter !== "high_risk" || ["high", "critical"].includes(item.risk_level)) &&
         (!state.selectedQueue || item.queue === state.selectedQueue) &&
@@ -1081,7 +1147,7 @@ function dashboardHtml() {
     }
     function renderCurrent() {
       for (const view of ["items", "sources", "actions", "learnings", "rules", "logs", "settings"]) qs("#" + view + "View").classList.toggle("hidden", state.selectedView !== view);
-      document.querySelectorAll(".tab").forEach((tab) => tab.classList.toggle("active", tab.dataset.view === state.selectedView));
+      document.querySelectorAll(".tab").forEach((tab) => { const active = tab.dataset.view === state.selectedView; tab.classList.toggle("active", active); tab.setAttribute("aria-current", active ? "page" : "false"); });
       if (state.selectedView === "items") renderItems();
       if (state.selectedView === "sources") renderSources();
       if (state.selectedView === "actions") renderActions();
@@ -1138,7 +1204,7 @@ function dashboardHtml() {
         el("label", { class: "item-check" }, [el("input", checkboxAttrs)]),
         el("button", { class: "item-row", onclick: () => selectItem(item.id) }, [
           el("div", { class: "item-title", text: item.title }),
-          el("div", { class: "rowmeta" }, [pill(item.queue), pill(item.status), pill(item.risk_level, item.risk_level), pill(item.source_type)])
+          el("div", { class: "rowmeta" }, [pill(item.queue), pill(item.status), isCurrentlySnoozed(item) ? pill("Later") : pill(item.assigned_human || item.assigned_agent || "Unassigned"), pill(item.risk_level, item.risk_level), pill(item.source_type)])
         ])
       ]);
     }
@@ -1168,7 +1234,7 @@ function dashboardHtml() {
       if (!item) { qs("#itemDetail").replaceChildren(el("div", { class: "muted", text: "No item selected" })); return; }
       qs("#itemDetail").replaceChildren(
         el("h2", { text: item.title }),
-        el("div", { class: "rowmeta" }, [pill(item.queue), pill(item.status), pill(item.risk_level, item.risk_level), pill(item.source_id)]),
+        el("div", { class: "rowmeta" }, [pill(item.queue), pill(item.status), pill(item.assigned_human || item.assigned_agent || "Unassigned"), isCurrentlySnoozed(item) ? pill("Later until " + formatDateTime(item.snoozed_until)) : pill(item.risk_level, item.risk_level)]),
         el("div", { class: "grid2" }, [
           info("Author", item.author_email || item.author || "unknown"),
           info("Received", item.received_at || "unknown"),
@@ -1231,8 +1297,19 @@ function dashboardHtml() {
           iconButton(state.summary?.settings?.ai_enabled ? "Classify with AI" : "Classify with rules", () => itemPost(item.id, "classify", { ai: state.summary?.settings?.ai_enabled === true }), "shield"),
           iconButton("Draft", () => itemPost(item.id, "draft", { body: draft.value }), "send"),
           iconButton("Learn", () => itemPost(item.id, "learn", {}), "brain"),
-          iconButton("Resolve", () => itemPost(item.id, "resolve", {}), "check", "primary"),
+          iconButton("Mark done", () => itemPost(item.id, "resolve", {}), "check", "primary"),
           iconButton("Block", () => itemPost(item.id, "block", {}), "x", "danger")
+        ]),
+        el("div", { class: "work-field" }, [
+          el("label", { text: "Ownership" }),
+          el("div", { class: "formrow" }, [
+            item.assigned_human === "local-operator"
+              ? button("Unassign", () => itemPost(item.id, "assign", { kind: "human", assignee: null }), "", false, "user-minus")
+              : button("Assign to me", () => itemPost(item.id, "assign", { kind: "human", assignee: "local-operator" }), "", false, "user"),
+            isCurrentlySnoozed(item)
+              ? button("Return to inbox", () => itemPost(item.id, "unsnooze", {}), "", false, "inbox")
+              : button("Snooze…", () => openSnoozeMenu(item.id), "", false, "clock")
+          ])
         ]),
         draft,
         el("div", { class: "work-field" }, [
@@ -1248,6 +1325,36 @@ function dashboardHtml() {
           qs("#workSurface").append(el("pre", { text: raw.raw || "" }));
         }, "", false, "file-text")
       );
+    }
+    function openSnoozeMenu(itemId) {
+      const options = [
+        ["Later today", nextLocalHour(17)],
+        ["Tomorrow morning", nextLocalDay(1, 9)],
+        ["Next week", nextLocalDay(7, 9)]
+      ];
+      qs("#workSurface").append(el("div", { class: "source-row" }, [
+        el("b", { text: "Snooze until" }),
+        el("div", { class: "controls" }, options.map(([labelText, until]) => button(labelText, () => itemPost(itemId, "snooze", { until: until.toISOString() }), "", false, "clock")))
+      ]));
+    }
+    function nextLocalHour(hour) {
+      const value = new Date();
+      value.setHours(hour, 0, 0, 0);
+      if (value <= new Date()) value.setDate(value.getDate() + 1);
+      return value;
+    }
+    function nextLocalDay(days, hour) {
+      const value = new Date();
+      value.setDate(value.getDate() + days);
+      value.setHours(hour, 0, 0, 0);
+      return value;
+    }
+    function formatDateTime(value) {
+      const date = new Date(value);
+      return Number.isFinite(date.getTime()) ? date.toLocaleString([], { dateStyle: "medium", timeStyle: "short" }) : "unknown";
+    }
+    function isCurrentlySnoozed(item) {
+      return Boolean(item?.snoozed_until && Date.parse(item.snoozed_until) > Date.now());
     }
     async function downloadAttachment(itemId, index) {
       setStatus("Downloading attachment...");
@@ -1841,6 +1948,9 @@ function dashboardHtml() {
             setStatus("Settings saved");
           }, "primary", false, "device-floppy")])
         ]),
+        el("details", { class: "advanced" }, [
+          el("summary", { text: "Advanced settings" }),
+          el("div", { class: "stack" }, [
         el("div", { class: "source-row" }, [
           el("b", { text: "Dashboard token" }),
           el("div", { class: "rowmeta" }, [
@@ -1894,6 +2004,8 @@ function dashboardHtml() {
           }, "primary", false, "shield")]),
           previewResult
         ])
+          ])
+        ])
       );
     }
     function checkboxLabel(text, control) {
@@ -1935,7 +2047,50 @@ function dashboardHtml() {
       if (iconName && ICONS[iconName]) btn.insertAdjacentHTML("afterbegin", ICONS[iconName]);
       return btn;
     }
-    document.querySelectorAll(".tab").forEach((tab) => tab.addEventListener("click", () => { state.selectedView = tab.dataset.view; renderCurrent(); }));
+    function openCommands() { qs("#commandPalette").showModal(); }
+    function selectedRowOffset(delta) {
+      const rows = filteredItems();
+      if (!rows.length) return;
+      const current = rows.findIndex((item) => item.id === state.selectedItemId);
+      const next = Math.max(0, Math.min(rows.length - 1, (current < 0 ? 0 : current) + delta));
+      selectItem(rows[next].id);
+      document.querySelectorAll(".item-row-wrap")[next]?.scrollIntoView({ block: "nearest" });
+    }
+    function runCommand(command) {
+      qs("#commandPalette").close();
+      if (command === "inbox") return switchInboxView("inbox");
+      if (command === "later") return switchInboxView("later");
+      if (command === "approvals") { state.selectedView = "actions"; renderCurrent(); return; }
+      if (command === "search") { qs("#searchBox").focus(); return; }
+      if (command === "done" && state.selectedItemId) return itemPost(state.selectedItemId, "resolve", {});
+      if (command === "snooze" && state.selectedItemId) return itemPost(state.selectedItemId, "snooze", { until: nextLocalDay(1, 9).toISOString() });
+    }
+    document.addEventListener("keydown", (event) => {
+      const editing = ["INPUT", "TEXTAREA", "SELECT"].includes(document.activeElement?.tagName) || document.activeElement?.isContentEditable;
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") { event.preventDefault(); openCommands(); return; }
+      if (editing || qs("#commandPalette").open) return;
+      if (event.key === "?") { event.preventDefault(); openCommands(); return; }
+      if (event.key === "/") { event.preventDefault(); runCommand("search"); return; }
+      if (event.key === "j") { event.preventDefault(); selectedRowOffset(1); return; }
+      if (event.key === "k") { event.preventDefault(); selectedRowOffset(-1); return; }
+      if (event.key === "e") { event.preventDefault(); runCommand("done"); return; }
+      if (event.key === "s") { event.preventDefault(); runCommand("snooze"); return; }
+      if (state.shortcutPrefix === "g") {
+        state.shortcutPrefix = "";
+        if (event.key === "i") runCommand("inbox");
+        if (event.key === "l") runCommand("later");
+        if (event.key === "a") runCommand("approvals");
+        return;
+      }
+      if (event.key === "g") {
+        state.shortcutPrefix = "g";
+        setTimeout(() => { state.shortcutPrefix = ""; }, 1000);
+      }
+    });
+    document.querySelectorAll(".tab").forEach((tab) => tab.addEventListener("click", () => { state.selectedView = tab.dataset.view; document.body.classList.remove("nav-open"); renderCurrent(); }));
+    document.querySelectorAll("[data-command]").forEach((control) => control.addEventListener("click", () => runCommand(control.dataset.command)));
+    qs("#closeCommands").addEventListener("click", () => qs("#commandPalette").close());
+    qs("#mobileMenuBtn").addEventListener("click", () => document.body.classList.toggle("nav-open"));
     qs("#refreshBtn").addEventListener("click", () => refreshWithSync().catch((error) => setStatus(error.message)));
     qs("#killSwitch").addEventListener("click", async () => { await api("/api/settings/auto-actions", { method: "POST", body: JSON.stringify({ enabled: !state.summary.settings.auto_actions_enabled }) }); await load(); });
     qs("#searchBox").addEventListener("input", () => { state.sidebarFilter = ""; renderShell(); renderItems(); });

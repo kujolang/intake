@@ -24,6 +24,7 @@ const IGNORED_ROOT_ENTRIES = new Set([
   ".DS_Store",
   ".git",
   ".intake",
+  ".loop-engineering",
   "node_modules"
 ]);
 

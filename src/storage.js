@@ -200,7 +200,10 @@ export async function listItemIndex(root, filters = {}) {
 
 async function listItemIndexLocked(root, filters = {}) {
   const rows = await readJson(join(root, "index", "items.json"), null);
-  if (!Array.isArray(rows)) {
+  const currentShape = Array.isArray(rows) && rows.every((row) =>
+    Object.hasOwn(row, "assigned_human") && Object.hasOwn(row, "assigned_agent") && Object.hasOwn(row, "snoozed_until")
+  );
+  if (!currentShape) {
     await rebuildItemIndex(root);
     return listItemIndex(root, filters);
   }
@@ -360,6 +363,14 @@ function matchesFilters(row, filters) {
     if (expected === undefined || expected === null || expected === "") continue;
     if (key === "tag") {
       if (!Array.isArray(row.tags) || !row.tags.includes(expected)) return false;
+    } else if (key === "view") {
+      const resolved = row.status === "resolved" || row.queue === "resolved";
+      const snoozed = Boolean(row.snoozed_until && Date.parse(row.snoozed_until) > Date.now());
+      if (expected === "inbox" && (resolved || snoozed)) return false;
+      if (expected === "later" && (resolved || !snoozed)) return false;
+      if (expected === "mine" && (resolved || snoozed || row.assigned_human !== "local-operator")) return false;
+      if (expected === "unassigned" && (resolved || snoozed || row.assigned_human || row.assigned_agent)) return false;
+      if (expected === "done" && !resolved) return false;
     } else if (row[key] !== expected) {
       return false;
     }
@@ -547,6 +558,9 @@ function compactItemRow(item) {
     risk_level: item.risk_level,
     category: item.category,
     tags: item.tags || [],
+    assigned_agent: item.assigned_agent || null,
+    assigned_human: item.assigned_human || null,
+    snoozed_until: item.snoozed_until || null,
     received_at: item.received_at,
     updated_at: item.updated_at
   };

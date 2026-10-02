@@ -69,6 +69,52 @@ test("dashboard exposes summary, items, actions, and settings APIs", async () =>
   });
 });
 
+test("dashboard supports familiar inbox ownership and snooze views", async () => {
+  await withDashboard(async (dashboard, item) => {
+    const base = `http://${dashboard.host}:${dashboard.port}`;
+    const headers = { "x-intake-token": "test-token", "content-type": "application/json" };
+
+    const assigned = await (await fetch(`${base}/api/items/${item.id}/assign`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ kind: "human", assignee: "local-operator" })
+    })).json();
+    assert.equal(assigned.item.assigned_human, "local-operator");
+    assert.equal((await (await fetch(`${base}/api/items?view=mine`, { headers })).json()).items.length, 1);
+    assert.equal((await (await fetch(`${base}/api/items?view=unassigned`, { headers })).json()).items.length, 0);
+
+    const until = new Date(Date.now() + 60 * 60 * 1000).toISOString();
+    const snoozed = await (await fetch(`${base}/api/items/${item.id}/snooze`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ until })
+    })).json();
+    assert.equal(snoozed.item.snoozed_until, until);
+    assert.equal((await (await fetch(`${base}/api/items?view=inbox`, { headers })).json()).items.length, 0);
+    assert.equal((await (await fetch(`${base}/api/items?view=later`, { headers })).json()).items.length, 1);
+    const summary = await (await fetch(`${base}/api/summary`, { headers })).json();
+    assert.equal(summary.counts.later_items, 1);
+    assert.equal(summary.counts.active_items, 0);
+
+    const unsnoozed = await (await fetch(`${base}/api/items/${item.id}/unsnooze`, { method: "POST", headers, body: "{}" })).json();
+    assert.equal(unsnoozed.item.snoozed_until, null);
+    const unassigned = await (await fetch(`${base}/api/items/${item.id}/assign`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ kind: "human", assignee: null })
+    })).json();
+    assert.equal(unassigned.item.assigned_human, null);
+    assert.equal((await (await fetch(`${base}/api/items?view=unassigned`, { headers })).json()).items.length, 1);
+
+    const invalid = await fetch(`${base}/api/items/${item.id}/snooze`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ until: "yesterday" })
+    });
+    assert.equal(invalid.status, 400);
+  });
+});
+
 test("dashboard updates runtime settings and policies", async () => {
   await withDashboard(async (dashboard) => {
     const base = `http://${dashboard.host}:${dashboard.port}`;
@@ -562,6 +608,10 @@ test("dashboard HTML keeps icon controls accessible", async () => {
     assert.match(html, /selectedItemIds/);
     assert.match(html, /Resolve selected/);
     assert.match(html, /View more/);
-    assert.match(html, /Archived/);
+    assert.match(html, /Quick commands/);
+    assert.match(html, /Advanced settings/);
+    assert.match(html, /Assign to me/);
+    assert.match(html, /Snooze/);
+    assert.match(html, /"Done"/);
   });
 });
