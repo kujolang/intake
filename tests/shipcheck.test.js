@@ -19,7 +19,7 @@ test("shipcheck reports local release health and external enterprise blockers", 
     assert.ok(report.checks.some((check) => check.id === "root-files" && check.status === "ok"));
     assert.ok(report.checks.some((check) => check.id === "package-private" && check.status === "warn"));
     assert.ok(report.blockers.some((blocker) => /Live PrivateEmail/.test(blocker)));
-    assert.ok(report.blockers.some((blocker) => /Remote GitHub Actions/.test(blocker)));
+    assert.ok(report.blockers.some((blocker) => /Remote GitHub Actions evidence/.test(blocker)));
   } finally {
     await rm(root, { recursive: true, force: true });
   }
@@ -48,4 +48,16 @@ test("benchmark threshold gate rejects invalid threshold overrides", () => {
   });
   assert.equal(result.status, 2);
   assert.match(result.stderr, /dashboardSummaryMs must be a positive number/);
+});
+
+test("package gate excludes transient audit logs", () => {
+  const result = spawnSync(process.execPath, ["scripts/check-package.mjs"], {
+    cwd: process.cwd(),
+    encoding: "utf8"
+  });
+  assert.equal(result.status, 0, result.stderr || result.stdout);
+  const receipt = JSON.parse(result.stdout);
+  assert.equal(receipt.ok, true);
+  assert.ok(receipt.files > 0);
+  assert.ok(receipt.unpacked_size > 0);
 });

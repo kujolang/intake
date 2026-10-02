@@ -5,7 +5,7 @@ Current decision: keep Kujo Intake private while it is being hardened as a showc
 ## Why `private: true` Remains
 
 - Live PrivateEmail and Slack smoke tests still need to be completed with disposable real accounts.
-- Remote CI still needs a passing run captured in GitHub; current jobs are blocked by GitHub billing/spending-limit settings before they start.
+- Remote CI is passing on Node 20.19, 22, and 24 with the Chromium browser test; release evidence must still be checked for the revision being published.
 - Storage migration hooks exist, but there has not yet been a real schema migration.
 - Dashboard first-run onboarding is not complete.
 - GitHub has provider-aware webhook intake and approved comment writeback, but Jira, Linear, and ClickUp still need provider-native writeback actions.
@@ -27,5 +27,5 @@ Current decision: keep Kujo Intake private while it is being hardened as a showc
 - `README.md` reflects the actual release state.
 - Live email and Slack smoke tests are completed.
 - Remote CI has passed on the branch intended for release.
-- `npm pack --dry-run` contents match the release checklist.
+- `node scripts/check-package.mjs` passes, including the ratchet that excludes local audit command transcripts from the archive.
 - Support and security contact expectations are documented.

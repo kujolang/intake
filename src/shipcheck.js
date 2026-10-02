@@ -47,13 +47,13 @@ export async function runShipcheck(root, options = {}) {
     rootFilesCheck(rootEntries)
   ];
   if (packageJson.private === true) {
-    checks.push({ id: "package-private", status: "warn", message: "`private` remains true until live-source and remote CI gates are proven" });
+    checks.push({ id: "package-private", status: "warn", message: "`private` remains true until the remaining live-source and release gates are proven" });
   }
 
   const blockers = [
     "Live PrivateEmail smoke test evidence is not captured by local shipcheck.",
     "Live Slack smoke test evidence is not captured by local shipcheck.",
-    "Remote GitHub Actions passing run must be captured after account billing/spending-limit settings allow jobs to start."
+    "Remote GitHub Actions evidence is not captured by local shipcheck and must be verified separately."
   ];
   const ok = checks.every((item) => item.status !== "fail");
   return {
@@ -102,7 +102,16 @@ function packageMetadataCheck(pkg) {
 }
 
 function packageFilesCheck(pkg) {
-  const expected = ["bin/", "src/", "docs/", "scripts/", "README.md", "CHANGELOG.md", "LICENSE"];
+  const expected = [
+    "bin/",
+    "src/",
+    "docs/",
+    "!docs/audits/artifacts/**/*.log",
+    "scripts/",
+    "README.md",
+    "CHANGELOG.md",
+    "LICENSE"
+  ];
   const files = Array.isArray(pkg.files) ? pkg.files : [];
   const missing = expected.filter((entry) => !files.includes(entry));
   return check("package-files", missing.length === 0, missing.length ? `package files missing ${missing.join(", ")}` : "package files whitelist is complete");
@@ -115,13 +124,13 @@ function releaseScriptsCheck(pkg) {
   const verifyIncludesBench = String(scripts.verify || "").includes("bench:gate");
   const releaseIncludesVerify = String(scripts["release:check"] || "").includes("npm run verify");
   const releaseIncludesDoctor = String(scripts["release:check"] || "").includes("doctor");
-  const releaseIncludesPack = String(scripts["release:check"] || "").includes("npm pack --dry-run");
+  const releaseIncludesPack = String(scripts["release:check"] || "").includes("check-package.mjs");
   const failures = [
     ...missing.map((name) => `missing ${name}`),
     verifyIncludesBench ? null : "verify must include bench:gate",
     releaseIncludesVerify ? null : "release:check must run verify",
     releaseIncludesDoctor ? null : "release:check must run doctor",
-    releaseIncludesPack ? null : "release:check must run npm pack --dry-run"
+    releaseIncludesPack ? null : "release:check must run the package-content gate"
   ].filter(Boolean);
   return check("release-scripts", failures.length === 0, failures.join("; ") || "release scripts are wired");
 }

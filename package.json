@@ -20,6 +20,7 @@
     "bin/",
     "src/",
     "docs/",
+    "!docs/audits/artifacts/**/*.log",
     "scripts/",
     "README.md",
     "CHANGELOG.md",
@@ -43,7 +44,7 @@
     "bench": "node scripts/bench.mjs",
     "bench:logs": "node scripts/bench-logs.mjs",
     "bench:gate": "node scripts/bench-threshold.mjs",
-    "release:check": "npm run verify && node bin/intake.js shipcheck && node bin/intake.js doctor --json && npm pack --dry-run",
+    "release:check": "npm run verify && node bin/intake.js shipcheck && node bin/intake.js doctor --json && node scripts/check-package.mjs",
     "intake": "node bin/intake.js",
     "test:browser": "node scripts/browser-test.mjs"
   },
