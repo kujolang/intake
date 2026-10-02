@@ -8,6 +8,8 @@ const REQUIRED_ROOT_ENTRIES = [
   ".gitignore",
   "bin",
   "CHANGELOG.md",
+  "config",
+  "CONTRIBUTING.md",
   "docs",
   "LICENSE",
   "package-lock.json",
@@ -19,6 +21,7 @@ const REQUIRED_ROOT_ENTRIES = [
 ];
 
 const IGNORED_ROOT_ENTRIES = new Set([
+  ".DS_Store",
   ".git",
   ".intake",
   "node_modules"
@@ -136,11 +139,15 @@ function ciWorkflowCheck(workflowText) {
 function rootFilesCheck(rootEntries) {
   const entries = new Set(rootEntries);
   const missing = REQUIRED_ROOT_ENTRIES.filter((entry) => !entries.has(entry));
-  const extras = rootEntries.filter((entry) => !REQUIRED_ROOT_ENTRIES.includes(entry) && !IGNORED_ROOT_ENTRIES.has(entry));
+  const extras = rootEntries.filter((entry) => !REQUIRED_ROOT_ENTRIES.includes(entry) && !ignoredRootEntry(entry));
   if (missing.length) return check("root-files", false, `missing ${missing.join(", ")}`);
   return {
     id: "root-files",
     status: extras.length ? "warn" : "ok",
     message: extras.length ? `unexpected root entries: ${extras.join(", ")}` : "root files are intentional"
   };
+}
+
+function ignoredRootEntry(entry) {
+  return IGNORED_ROOT_ENTRIES.has(entry) || entry.endsWith(".intake-lock") || entry.endsWith(".intake-recovery");
 }

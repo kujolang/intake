@@ -16,6 +16,7 @@ test("shipcheck reports local release health and external enterprise blockers", 
     assert.equal(report.enterprise_ready, false);
     assert.ok(report.checks.some((check) => check.id === "release-scripts" && check.status === "ok"));
     assert.ok(report.checks.some((check) => check.id === "ci-workflow" && check.status === "ok"));
+    assert.ok(report.checks.some((check) => check.id === "root-files" && check.status === "ok"));
     assert.ok(report.checks.some((check) => check.id === "package-private" && check.status === "warn"));
     assert.ok(report.blockers.some((blocker) => /Live PrivateEmail/.test(blocker)));
     assert.ok(report.blockers.some((blocker) => /Remote GitHub Actions/.test(blocker)));
