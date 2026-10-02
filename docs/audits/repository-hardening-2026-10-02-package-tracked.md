@@ -58,5 +58,7 @@ The user explicitly directed this pass to skip the unavailable plugin-managed De
 | `npm run lint` | PASS. |
 | `git diff --check` | PASS. |
 | `npm run release:check` | PASS: 107 tests, smoke, 21 evals, benchmarks, zero vulnerabilities, doctor, shipcheck, and tracked-only package gate. |
+| `npm exec --yes --package=node@20.19.0 -- node --test tests/*.test.js` | PASS: all 107 tests on the minimum supported Node runtime. |
+| `npm run test:browser` | PASS: Chromium token rotation, revoked-token rejection, authenticated save/reload, URL scrubbing, and no page errors. |
 
-Minimum-Node, browser, and remote-CI results are recorded after the implementation/report commits are complete.
+Remote-CI results are recorded after the implementation/report commits are complete.
