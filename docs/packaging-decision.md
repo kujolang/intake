@@ -27,5 +27,5 @@ Current decision: keep Kujo Intake private while it is being hardened as a showc
 - `README.md` reflects the actual release state.
 - Live email and Slack smoke tests are completed.
 - Remote CI has passed on the branch intended for release.
-- `node scripts/check-package.mjs` passes, including the ratchet that excludes local audit command transcripts from the archive.
+- `node scripts/check-package.mjs` passes, proving every archived file is tracked and intentionally reviewable; local audit command transcripts remain excluded.
 - Support and security contact expectations are documented.

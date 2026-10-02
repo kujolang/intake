@@ -6,6 +6,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { initStore } from "../src/storage.js";
 import { runShipcheck } from "../src/shipcheck.js";
+import { findUntrackedPackageFiles } from "../scripts/check-package.mjs";
 
 test("shipcheck reports local release health and external enterprise blockers", async () => {
   const root = await mkdtemp(join(tmpdir(), "intake-shipcheck-test-"));
@@ -50,7 +51,7 @@ test("benchmark threshold gate rejects invalid threshold overrides", () => {
   assert.match(result.stderr, /dashboardSummaryMs must be a positive number/);
 });
 
-test("package gate excludes transient audit logs", () => {
+test("package gate permits only tracked files", () => {
   const result = spawnSync(process.execPath, ["scripts/check-package.mjs"], {
     cwd: process.cwd(),
     encoding: "utf8"
@@ -58,6 +59,12 @@ test("package gate excludes transient audit logs", () => {
   assert.equal(result.status, 0, result.stderr || result.stdout);
   const receipt = JSON.parse(result.stdout);
   assert.equal(receipt.ok, true);
+  assert.equal(receipt.tracked_only, true);
   assert.ok(receipt.files > 0);
   assert.ok(receipt.unpacked_size > 0);
+});
+
+test("package inventory detects arbitrary untracked entries", () => {
+  const files = [{ path: "package.json" }, { path: "docs/private-draft.txt" }];
+  assert.deepEqual(findUntrackedPackageFiles(files, new Set(["package.json"])), ["docs/private-draft.txt"]);
 });
