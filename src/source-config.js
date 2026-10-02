@@ -40,7 +40,7 @@ export function buildSourceFromInput(input, existing = null) {
     config.path = input.path ?? config.path ?? "";
     config.workspace_url = input.workspace_url ?? input.workspaceUrl ?? config.workspace_url ?? "";
   }
-  for (const [key, alias] of [["max_file_bytes", "maxFileBytes"], ["max_message_bytes", "maxMessageBytes"], ["max_batch_bytes", "maxBatchBytes"], ["max_batch_items", "maxBatchItems"]]) {
+  for (const [key, alias] of [["max_file_bytes", "maxFileBytes"], ["max_message_bytes", "maxMessageBytes"], ["max_batch_bytes", "maxBatchBytes"], ["max_batch_items", "maxBatchItems"], ["github_timeout_ms", "githubTimeoutMs"], ["github_max_request_bytes", "githubMaxRequestBytes"], ["github_max_response_bytes", "githubMaxResponseBytes"]]) {
     const value = input[key] ?? input[alias];
     if (value !== undefined) config[key] = resourceLimit(value, 1, key);
   }

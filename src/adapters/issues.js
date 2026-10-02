@@ -7,8 +7,12 @@ import { saveItem, storeRaw, logEvent } from "../storage.js";
 import { readStreamText, timingSafeEqualString } from "../util.js";
 import { classifyAndSave } from "../workflow.js";
 import { recordRequestError, requestErrorPayload } from "../request-errors.js";
+import { readBounded, resourceLimit } from "../resource-limits.js";
 
 const MAX_ISSUE_BODY_BYTES = 1024 * 1024;
+const DEFAULT_GITHUB_TIMEOUT_MS = 30000;
+const DEFAULT_GITHUB_MAX_REQUEST_BYTES = 1024 * 1024;
+const DEFAULT_GITHUB_MAX_RESPONSE_BYTES = 1024 * 1024;
 const ISSUE_TYPES = ["github", "jira", "linear", "clickup"];
 
 export function issueCapabilities(provider) {
@@ -118,7 +122,13 @@ export async function addGitHubIssueComment(source, action, item) {
   if (!token) throw new Error("GitHub comment action requires config.api_token_ref");
   if (!/^[A-Za-z0-9][A-Za-z0-9_.-]*\/[A-Za-z0-9][A-Za-z0-9_.-]*$/.test(String(repository))) throw new Error("GitHub comment action requires repository in owner/name format");
   if (!/^\d+$/.test(String(issueNumber))) throw new Error("GitHub comment action requires a numeric issue number");
+  const timeout = resourceLimit(source.config?.github_timeout_ms, DEFAULT_GITHUB_TIMEOUT_MS, "github_timeout_ms");
+  const maxRequest = resourceLimit(source.config?.github_max_request_bytes, DEFAULT_GITHUB_MAX_REQUEST_BYTES, "github_max_request_bytes");
+  const maxResponse = resourceLimit(source.config?.github_max_response_bytes, DEFAULT_GITHUB_MAX_RESPONSE_BYTES, "github_max_response_bytes");
+  const body = JSON.stringify({ body: action.body || action.metadata?.body || "" });
+  if (Buffer.byteLength(body) > maxRequest) throw new Error(`GitHub request exceeds github_max_request_bytes (${maxRequest}); comment was not attempted`);
   const response = await fetch(`https://api.github.com/repos/${repository}/issues/${issueNumber}/comments`, {
+    signal: AbortSignal.timeout(timeout),
     method: "POST",
     headers: {
       accept: "application/vnd.github+json",
@@ -126,13 +136,23 @@ export async function addGitHubIssueComment(source, action, item) {
       "content-type": "application/json",
       "user-agent": "kujo-intake"
     },
-    body: JSON.stringify({ body: action.body || action.metadata?.body || "" })
+    body
   });
-  const payload = await response.json().catch(() => ({}));
+  const payload = await boundedResponseJson(response, maxResponse);
   if (!response.ok) {
     throw new Error(`GitHub comment failed: ${response.status} ${payload.message || response.statusText}`);
   }
   return { provider: "github", comment_url: payload.html_url || payload.url || null, issue: String(issueNumber), repository };
+}
+
+async function boundedResponseJson(response, maxBytes) {
+  if (!response.body) return typeof response.json === "function" ? response.json().catch(() => ({})) : {};
+  const text = (await readBounded(response.body, maxBytes, "GitHub response")).toString("utf8");
+  try {
+    return JSON.parse(text);
+  } catch {
+    return {};
+  }
 }
 
 function verifyIssueRequest(req, raw, expectedToken, provider, port) {

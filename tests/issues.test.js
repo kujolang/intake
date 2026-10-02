@@ -167,6 +167,56 @@ test("GitHub comment writeback validates repository and issue number before fetc
   }
 });
 
+test("GitHub comment writeback bounds response bytes and request time", async (t) => {
+  const previousFetch = globalThis.fetch;
+  process.env.INTAKE_TEST_GITHUB_API_TOKEN = "github-api-token";
+  t.after(() => {
+    globalThis.fetch = previousFetch;
+    delete process.env.INTAKE_TEST_GITHUB_API_TOKEN;
+  });
+  const source = makeSource("github", {
+    id: "github",
+    config: {
+      api_token_ref: "env:INTAKE_TEST_GITHUB_API_TOKEN",
+      github_max_response_bytes: 10,
+      github_timeout_ms: 10
+    }
+  });
+  const action = makeAction({ intake_item_id: "item", type: "comment_issue", body: "hello" });
+  const item = makeItem({
+    source_id: "github",
+    source_type: "github",
+    source_native_id: "issue-node",
+    source_thread_id: "7",
+    title: "Bounded comment",
+    body: "Body",
+    metadata: { project: "acme/app" }
+  });
+
+  let fetchCalls = 0;
+  globalThis.fetch = async () => { fetchCalls += 1; };
+  await assert.rejects(
+    () => addGitHubIssueComment({ ...source, config: { ...source.config, github_max_request_bytes: 10 } }, action, item),
+    /GitHub request exceeds github_max_request_bytes \(10\); comment was not attempted/
+  );
+  assert.equal(fetchCalls, 0);
+
+  let signal;
+  globalThis.fetch = async (url, options) => {
+    signal = options.signal;
+    return new Response(JSON.stringify({ html_url: `https://example.test/${"x".repeat(20)}` }));
+  };
+  await assert.rejects(() => addGitHubIssueComment(source, action, item), /GitHub response exceeds 10 bytes/);
+  assert.ok(signal instanceof AbortSignal);
+
+  globalThis.fetch = (url, options) => new Promise((resolve, reject) => {
+    options.signal.addEventListener("abort", () => reject(options.signal.reason), { once: true });
+  });
+  const keepAlive = setInterval(() => {}, 1000);
+  t.after(() => clearInterval(keepAlive));
+  await assert.rejects(() => addGitHubIssueComment(source, action, item), { name: "TimeoutError" });
+});
+
 test("issue source readiness checks require a token or secret ref", () => {
   assert.deepEqual(testIssueConnection(makeSource("clickup", { id: "clickup", name: "ClickUp" })).ok, false);
   assert.deepEqual(testIssueConnection(makeSource("clickup", { id: "clickup", name: "ClickUp", secret_ref: "env:CLICKUP_TOKEN" })).ok, true);

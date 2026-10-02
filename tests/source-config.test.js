@@ -59,3 +59,21 @@ test("source config can clear allowed action restrictions", () => {
 
   assert.deepEqual(updated.config.allowed_actions, []);
 });
+
+test("source config validates GitHub writeback resource limits", () => {
+  const source = buildSourceFromInput({
+    type: "github",
+    id: "github",
+    token: "fixture",
+    github_timeout_ms: "2500",
+    github_max_request_bytes: "2048",
+    github_max_response_bytes: "4096"
+  });
+  assert.equal(source.config.github_timeout_ms, 2500);
+  assert.equal(source.config.github_max_request_bytes, 2048);
+  assert.equal(source.config.github_max_response_bytes, 4096);
+  assert.throws(
+    () => buildSourceFromInput({ type: "github", id: "github", github_timeout_ms: 0 }),
+    /github_timeout_ms must be a positive integer/
+  );
+});
