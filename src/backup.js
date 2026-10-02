@@ -34,7 +34,7 @@ async function createBackupLocked(root, options = {}) {
   };
   await mkdir(dirname(output), { recursive: true });
   await writeGzipJson(output, backup);
-  const rotation = options.keep ? await rotateBackups(dirname(output), Number(options.keep)) : { removed: [] };
+  const rotation = options.keep ? await rotateBackups(dirname(output), Number(options.keep), output) : { removed: [] };
   await logEvent(root, "audit", {
     event_type: "backup_created",
     status: "ok",
@@ -228,7 +228,7 @@ function defaultBackupPath(root) {
   return join(root, "backups", `intake-backup-${stamp}.json.gz`);
 }
 
-async function rotateBackups(dir, keep) {
+async function rotateBackups(dir, keep, currentPath) {
   if (!Number.isFinite(keep) || keep < 1) throw new Error("--keep must be a positive number");
   let entries = [];
   try {
@@ -240,16 +240,39 @@ async function rotateBackups(dir, keep) {
   for (const entry of entries) {
     if (!entry.isFile() || !entry.name.endsWith(".json.gz")) continue;
     const path = join(dir, entry.name);
+    if (path !== currentPath && !await hasBackupHeader(path)) continue;
     const info = await stat(path);
     backups.push({ path, mtimeMs: info.mtimeMs });
   }
-  backups.sort((a, b) => b.mtimeMs - a.mtimeMs);
+  backups.sort((a, b) => {
+    if (a.path === currentPath) return -1;
+    if (b.path === currentPath) return 1;
+    return b.mtimeMs - a.mtimeMs;
+  });
   const removed = [];
   for (const backup of backups.slice(keep)) {
     await rm(backup.path, { force: true });
     removed.push(basename(backup.path));
   }
   return { kept: Math.min(backups.length, keep), removed };
+}
+
+async function hasBackupHeader(path) {
+  const source = createReadStream(path);
+  const gunzip = source.pipe(createGunzip());
+  let prefix = "";
+  try {
+    for await (const chunk of gunzip) {
+      prefix += chunk.toString("utf8");
+      if (prefix.length >= 512) break;
+    }
+    return /^\s*\{\s*"format"\s*:\s*"kujo-intake-backup"\s*,\s*"format_version"\s*:\s*1\s*,/.test(prefix);
+  } catch {
+    return false;
+  } finally {
+    gunzip.destroy();
+    source.destroy();
+  }
 }
 
 async function writeGzipJson(path, value) {

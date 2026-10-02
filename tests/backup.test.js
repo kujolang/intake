@@ -1,9 +1,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, readdir, rm, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { gunzipSync } from "node:zlib";
+import { gunzipSync, gzipSync } from "node:zlib";
 import { createManualItem } from "../src/adapters/manual.js";
 import { createBackup, restoreBackup, verifyBackup } from "../src/backup.js";
 import { makeSource } from "../src/models.js";
@@ -79,6 +79,34 @@ test("backup create can rotate old backups", async () => {
     assert.equal(rotated.rotation.removed.length, 1);
     const backups = (await readdir(backupDir)).filter((name) => name.endsWith(".json.gz"));
     assert.equal(backups.length, 2);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("backup rotation preserves unrelated archives and the backup just created", async () => {
+  const root = await mkdtemp(join(tmpdir(), "intake-backup-safe-rotate-test-"));
+  try {
+    const store = join(root, ".intake");
+    const backupDir = join(root, "shared-archives");
+    await initStore(store);
+    await mkdir(backupDir, { recursive: true });
+    const one = join(backupDir, "one.json.gz");
+    const two = join(backupDir, "two.json.gz");
+    const unrelated = join(backupDir, "unrelated.json.gz");
+    const current = join(backupDir, "current.json.gz");
+    await createBackup(store, { output: one });
+    await createBackup(store, { output: two });
+    await writeFile(unrelated, gzipSync("unrelated archive"));
+    const future = new Date(Date.now() + 60_000);
+    await utimes(one, future, future);
+    await utimes(two, future, future);
+
+    const rotated = await createBackup(store, { output: current, keep: 1 });
+
+    assert.deepEqual(rotated.rotation.removed.sort(), ["one.json.gz", "two.json.gz"]);
+    assert.deepEqual((await readdir(backupDir)).sort(), ["current.json.gz", "unrelated.json.gz"]);
+    assert.equal((await verifyBackup(current)).ok, true);
   } finally {
     await rm(root, { recursive: true, force: true });
   }
