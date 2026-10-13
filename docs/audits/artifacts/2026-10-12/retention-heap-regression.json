@@ -1,0 +1,6 @@
+{
+  "starting_sha": "6f64126bdaa9a33b82f2b0d2dfdb8726828d0b00",
+  "worker_old_space_mib": 64,
+  "baseline_exit_code": 1,
+  "baseline_heap_exhausted": true
+}

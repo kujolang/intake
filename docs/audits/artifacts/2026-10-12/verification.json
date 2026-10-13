@@ -1,0 +1,93 @@
+{
+  "date": "2026-10-12",
+  "repository": "kujolang/intake",
+  "branch": "main",
+  "starting_sha": "6f64126bdaa9a33b82f2b0d2dfdb8726828d0b00",
+  "ending_implementation_sha": "33a0bf63d3c97077b1da677a39cbf1adb4be6bd7",
+  "node": "v26.7.0",
+  "baseline": {
+    "verify": "pass",
+    "tests": 111,
+    "evals": 21,
+    "advisories": 0
+  },
+  "regressions": {
+    "baseline_failed_tests": 7,
+    "new_tests": 10,
+    "fixed_tests": 121
+  },
+  "final": {
+    "release_check": "pass",
+    "tests": 121,
+    "evals": 21,
+    "node20_tests": "pass",
+    "node20_retention_heap": "pass",
+    "chromium": "pass",
+    "retention_heap": "pass",
+    "advisories": 0,
+    "runtime_dependency_entries": 4,
+    "dev_dependency_entries": 1
+  },
+  "logs": [
+    {
+      "path": "install.log",
+      "sha256": "216572244abffd69977152a31e1ba7e3084051631f0e76b160f514413827eb40"
+    },
+    {
+      "path": "baseline.log",
+      "sha256": "945fc411844bd5c596d0d38954997bac345b46994a72f5d5362a39b89a14f08a"
+    },
+    {
+      "path": "regressions-before.log",
+      "sha256": "03975e6e1f03dcbf7aa5b25a549c02d61bba34ec56f9a74016493fe9926a3510"
+    },
+    {
+      "path": "ai-before.log",
+      "sha256": "a69e1bbf5a4f7a72eb907035990d269c3514dbffb8c3627601e9880ca57f3481"
+    },
+    {
+      "path": "attachments-before.log",
+      "sha256": "ee99e57d4d79795ceeb983039e3a1f10107c084e992e91e92e2cbd061b3bbc86"
+    },
+    {
+      "path": "backup-before.log",
+      "sha256": "af1151e371ac31c585ddfb537ff157189044576a831785e0a0bcd28fbf00f3cc"
+    },
+    {
+      "path": "focused-after.log",
+      "sha256": "f17960811eee2f43c502984f6d178d3964a09700e7596ab9b43ca9055230de8b"
+    },
+    {
+      "path": "maintenance-after.log",
+      "sha256": "3206b5060d9f531b010cf859c14471827d7023c90bf7518d83bcdd2864115258"
+    },
+    {
+      "path": "retention-baseline-heap.log",
+      "sha256": "e79cbe3253ec010c1966b269de4441824191df81cb7ce397af80335fdbbeb9b8"
+    },
+    {
+      "path": "retention-heap-gate.log",
+      "sha256": "7b2cea834e8c899417901c8d5159881f721489dd7b867e83a5babdcfd50b1db4"
+    },
+    {
+      "path": "node20-tests.log",
+      "sha256": "8c74a1a7e27db057ab8bcf737e6463587a18391b507e223ce7867919f1681ad1"
+    },
+    {
+      "path": "node20-retention.log",
+      "sha256": "cfadf80c77084b9f4cd54a09a8a510367b277adb0bb380f00cf1f7d1bdfbf62b"
+    },
+    {
+      "path": "browser.log",
+      "sha256": "5dcb8c32cf7d4da32e4899220a1045f22c1a31084956c1ce24dfdfbfc969adde"
+    },
+    {
+      "path": "release-final.log",
+      "sha256": "d8d89dfa32657b3767ea3ded6aa2a6e5c65d064224ddb13af6c31d2e127b9ecd"
+    }
+  ],
+  "limitations": [
+    "Local fixture verification, not live provider delivery certification.",
+    "Remote CI evidence is stored in the Strata handoff after push."
+  ]
+}
