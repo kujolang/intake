@@ -1,0 +1,76 @@
+{
+  "starting_sha": "aeef597cb7fe32c17a01dd5cc0c8e1189d12c19b",
+  "implementation_sha": "bd42b653efd106c7347699948cd0f714ccfdf69d",
+  "status": "passed",
+  "tests_before": 131,
+  "tests_after": 142,
+  "checks": [
+    {
+      "command": "npm run verify",
+      "log": "baseline.log",
+      "exit_code": 1,
+      "result": "131 tests passed; smoke dashboard exceeded unchanged startup window",
+      "sha256": "41cf8d891f5c12c6ffef339cfc14084ff943615539c4a03f8eda3ac1d8890109"
+    },
+    {
+      "command": "node --test tests/recovery.test.js (initial three regressions)",
+      "log": "failures-before.log",
+      "exit_code": 1,
+      "result": "three expected pre-fix failures",
+      "sha256": "37fd7ff3db169f0c33d246b13d35aebebb5569d84d45ff6f184e6dcbeea68c21"
+    },
+    {
+      "command": "node --test --test-name-pattern=\"appending after\" tests/recovery.test.js",
+      "log": "log-before.log",
+      "exit_code": 1,
+      "result": "expected pre-fix torn-log failure",
+      "sha256": "67c81dd5c237a1dd529b25bdd724e96493498ffc64910f2494776bf97e0818d4"
+    },
+    {
+      "command": "node --test tests/recovery.test.js tests/backup.test.js tests/store-lock.test.js",
+      "log": "focused-after.log",
+      "exit_code": 0,
+      "result": "21 passed before adding the legacy-state case; final suite includes it",
+      "sha256": "b711c646c90505302a8ff375255d3acddc64ff3eb4e8bb70a6d0a0ad3bb23c3e"
+    },
+    {
+      "command": "npm run release:check with temporary INTAKE_DIR",
+      "log": "release.log",
+      "exit_code": 0,
+      "result": "142 tests, smoke, lint, links, eval, performance/retention gates, audit, shipcheck, doctor and package passed",
+      "sha256": "385af5fd33c7ced3954786722ab6067a9df068443f96567fd1a063563ea238f9"
+    },
+    {
+      "command": "npm exec --yes --package=node@20.19.0 -- node --test tests/*.test.js",
+      "log": "node20.log",
+      "exit_code": 0,
+      "result": "142 passed",
+      "sha256": "23bdce7b459385acff7fd57f8266eacf74f764cc881b56e834e5e4a547b75934"
+    },
+    {
+      "command": "npm run test:browser",
+      "log": "browser.log",
+      "exit_code": 0,
+      "result": "Chromium passed",
+      "sha256": "5dcb8c32cf7d4da32e4899220a1045f22c1a31084956c1ce24dfdfbfc969adde"
+    },
+    {
+      "command": "npm run docs:links",
+      "log": "final-docs.log",
+      "exit_code": 0,
+      "result": "passed",
+      "sha256": "0f9abe321183986db784e7893d7630a0737cc9dd3bb8435f9a50ac715c04b253"
+    },
+    {
+      "command": "node scripts/check-package.mjs",
+      "log": "final-package.log",
+      "exit_code": 0,
+      "result": "tracked-only final package passed",
+      "sha256": "206568307474f27514e47c91f2e0987e95a232df2e19ae70fd6b0706944292c7"
+    }
+  ],
+  "limits": [
+    "Process-interruption tests, not power-loss/fsync guarantees.",
+    "Detailed logs are local and ignored; exact-head remote results are saved to Strata."
+  ]
+}
