@@ -1,0 +1,65 @@
+{
+  "repository": "kujolang/intake",
+  "branch": "main",
+  "starting_sha": "ed28fdb60e820e0529305e9ee4e99bbdb4708727",
+  "ending_implementation_sha": "8e57dfab40c5dc1518f972ed77cebd3f1b1c60da",
+  "local_node": "v26.7.0",
+  "checks": [
+    {
+      "command": "npm test",
+      "exit_code": 0,
+      "tests_passed": 155,
+      "log": "baseline.log",
+      "sha256": "4846cbfd9ae8b665fd99b915baae9c06591a94d96395aa6d1c1b90b44c185c7e"
+    },
+    {
+      "command": "node --test --test-name-pattern='malformed JSON values|inconsistent or unclassified' tests/receiver-recovery.test.js (before guards)",
+      "exit_code": 1,
+      "tests_passed": 0,
+      "log": "failures-before.log",
+      "sha256": "aff982b605f31932b4db14c644547a42b127cfdc639b441fc11ac0e3c4bdd7e6"
+    },
+    {
+      "command": "node --test --test-name-pattern='index recovery refuses' tests/receiver-recovery.test.js (before index validation)",
+      "exit_code": 1,
+      "tests_passed": 0,
+      "log": "index-failure-before.log",
+      "sha256": "833c2861da4f83db09d7a6f222ebb07b360c6d6a81c68dcf6f841e1b9e52d589"
+    },
+    {
+      "command": "node --test tests/receiver-recovery.test.js tests/receiver-retries.test.js tests/final-audit.test.js",
+      "exit_code": 0,
+      "tests_passed": 17,
+      "log": "focused-final.log",
+      "sha256": "292045e615b650fdc8d39e22149f94adde2d65ea4e386e0bb94c7def27e1501f"
+    },
+    {
+      "command": "INTAKE_DIR=<initialized temporary store> npm run release:check",
+      "exit_code": 0,
+      "tests_passed": 163,
+      "log": "release.log",
+      "sha256": "fc230e6b5d3bdb88cd97b5ddac918bc589cf480da1bdb18126ef739de652c581"
+    },
+    {
+      "command": "npm exec --yes --package=node@20.19.0 -- node --test tests/*.test.js",
+      "exit_code": 0,
+      "tests_passed": 163,
+      "log": "node20.log",
+      "sha256": "9f3fe735499d051fd10d95a79bada73703faaa589e18aaf27713abde39c433a2"
+    },
+    {
+      "command": "npm run test:browser",
+      "exit_code": 0,
+      "tests_passed": null,
+      "log": "browser.log",
+      "sha256": "5dcb8c32cf7d4da32e4899220a1045f22c1a31084956c1ce24dfdfbfc969adde"
+    }
+  ],
+  "notes": [
+    "Three added corruption/recovery regressions failed before their respective corrections.",
+    "Eight new tests cover three process-exit commit boundaries, live index-write failure, syntax errors, invalid record values, receipt identity and index preservation.",
+    "The first crash-test draft needed rm(force:true) during fixture setup because initStore need not create an item index; this was not a product defect.",
+    "No runtime performance or token improvement claim; existing gates pass.",
+    "Verbose logs are ignored; exact-head remote CI will be retained in the Strata handoff."
+  ]
+}
