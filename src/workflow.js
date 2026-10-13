@@ -110,6 +110,10 @@ export async function receiveItem(root, source, payload, normalize, eventType) {
   return withStoreLock(root, async () => {
     const existing = await loadItem(root, id);
     if (existing) {
+      if (existing.source_id !== source.id || existing.metadata?.receipt_hash !== receiptHash ||
+          typeof existing.last_processed_at !== "string" || !Number.isFinite(Date.parse(existing.last_processed_at))) {
+        throw new Error(`invalid stored receiver receipt: ${id}; inspect or restore the item before retrying`);
+      }
       // Complete an interrupted record/index write without rerunning classification.
       await saveItem(root, existing);
       await logEvent(root, "sync", { source_id: source.id, item_id: id, event_type: `${eventType}_duplicate`, status: "skipped" });

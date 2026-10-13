@@ -158,7 +158,18 @@ export async function loadItem(root, id) {
 }
 
 async function loadItemLocked(root, id) {
-  return readJson(recordPath(root, "items", id, "item id"), null);
+  const missing = Symbol("missing item");
+  const item = await readJson(recordPath(root, "items", id, "item id"), missing);
+  if (item === missing) return null;
+  return validateStoredItem(item, id);
+}
+
+function validateStoredItem(item, id) {
+  if (!item || typeof item !== "object" || Array.isArray(item) ||
+      !["string", "number"].includes(typeof item.id) || String(item.id) !== String(id)) {
+    throw new Error(`invalid stored item identity: ${id}`);
+  }
+  return item;
 }
 
 export async function deleteItem(root, id, options = {}) {
@@ -188,8 +199,11 @@ async function listItemsLocked(root, filters = {}) {
   const items = [];
   for (const name of names.sort()) {
     if (!name.endsWith(".json")) continue;
-    const item = await readJson(join(dir, name), null);
-    if (item && matchesFilters(item, filters)) items.push(item);
+    const missing = Symbol("missing item");
+    const item = await readJson(join(dir, name), missing);
+    if (item === missing) continue;
+    validateStoredItem(item, name.slice(0, -5));
+    if (matchesFilters(item, filters)) items.push(item);
   }
   return paginateRows(items.sort(sortItems), filters);
 }
