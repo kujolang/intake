@@ -1,5 +1,5 @@
 import { withStoreLock } from "./store-lock.js";
-import { appendFile, mkdir, readdir, readFile, rm, stat } from "node:fs/promises";
+import { appendFile, mkdir, open, readdir, readFile, rm, stat } from "node:fs/promises";
 import { basename, join, relative, resolve, sep } from "node:path";
 import { DEFAULT_INTAKE_DIR, LOG_NAMES, REQUIRED_DIRS, STORAGE_SCHEMA_VERSION, VERSION } from "./constants.js";
 import { runMigrations } from "./migrations.js";
@@ -449,7 +449,21 @@ async function logEventLocked(root, name, entry) {
     policy_result: null,
     error: null
   };
-  await appendFile(path, `${JSON.stringify(redact({ ...base, ...entry }))}\n`, "utf8");
+  const record = `${JSON.stringify(redact({ ...base, ...entry }))}\n`;
+  const file = await open(path, "a+");
+  try {
+    const { size } = await file.stat();
+    let prefix = "";
+    if (size) {
+      const last = Buffer.alloc(1);
+      await file.read(last, 0, 1, size - 1);
+      if (last[0] !== 10) prefix = "\n";
+    }
+    // Preserve a torn record as its own line instead of corrupting the next one.
+    await file.writeFile(prefix + record, "utf8");
+  } finally {
+    await file.close();
+  }
 }
 
 export async function rebuildItemIndex(root) {

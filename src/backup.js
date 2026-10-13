@@ -1,4 +1,5 @@
-import { withStoreLock } from "./store-lock.js";
+import { recoverInterruptedRestore, restoreJournalPath } from "./restore-journal.js";
+import { canonicalStoreRoot, withStoreLock } from "./store-lock.js";
 import { randomUUID } from "node:crypto";
 import { createGunzip, createGzip } from "node:zlib";
 import { Readable, Writable } from "node:stream";
@@ -8,7 +9,7 @@ import { mkdir, readdir, readFile, rename, rm, stat, writeFile } from "node:fs/p
 import { basename, dirname, join, relative, resolve, sep } from "node:path";
 import { STORAGE_SCHEMA_VERSION, VERSION } from "./constants.js";
 import { initStore, loadMeta, logEvent } from "./storage.js";
-import { isoNow, sha256 } from "./util.js";
+import { isoNow, sha256, writeJsonAtomic } from "./util.js";
 
 const BACKUP_FORMAT = "kujo-intake-backup";
 const BACKUP_FORMAT_VERSION = 1;
@@ -61,7 +62,9 @@ export async function verifyBackup(path, options = {}) {
 }
 
 export async function restoreBackup(path, targetRoot, options = {}) {
-  return withStoreLock(targetRoot, () => restoreBackupLocked(path, targetRoot, options));
+  const canonical = await canonicalStoreRoot(targetRoot);
+  const result = await withStoreLock(canonical, () => restoreBackupLocked(path, canonical, options));
+  return { ...result, restored_to: targetRoot };
 }
 
 async function restoreBackupLocked(path, targetRoot, options = {}) {
@@ -70,10 +73,14 @@ async function restoreBackupLocked(path, targetRoot, options = {}) {
   const errors = validateBackup(backup);
   if (errors.length) throw new Error(`backup verification failed: ${errors.join("; ")}`);
   await assertRestoreTarget(targetRoot, options.force === true);
-  const staging = `${resolve(targetRoot)}.restore-${randomUUID()}`;
-  const previous = `${resolve(targetRoot)}.previous-${randomUUID()}`;
-  let movedPrevious = false;
-  let committed = false;
+  const nonce = randomUUID();
+  const staging = `${targetRoot}.restore-${nonce}`;
+  const previous = `${targetRoot}.previous-${nonce}`;
+  let hadTarget;
+  try { await stat(targetRoot); hadTarget = true; }
+  catch (error) { if (error.code !== "ENOENT") throw error; hadTarget = false; }
+  const journal = { version: 1, root: targetRoot, nonce, had_target: hadTarget, phase: "building" };
+  await writeJsonAtomic(restoreJournalPath(targetRoot), journal);
   try {
     await mkdir(staging, { recursive: true });
     for (const file of backup.files) {
@@ -90,23 +97,21 @@ async function restoreBackupLocked(path, targetRoot, options = {}) {
     });
     // Recheck because building the staging tree may take time.
     await assertRestoreTarget(targetRoot, options.force === true);
+    await writeJsonAtomic(restoreJournalPath(targetRoot), { ...journal, phase: "ready" });
     try {
       await rename(targetRoot, previous);
-      movedPrevious = true;
     } catch (error) {
       if (error.code !== "ENOENT") throw error;
     }
-    try {
-      await rename(staging, targetRoot);
-      committed = true;
-    } catch (error) {
-      if (movedPrevious) await rename(previous, targetRoot);
-      throw error;
-    }
-    if (movedPrevious) await rm(previous, { recursive: true, force: true });
+    await rename(staging, targetRoot);
+    await recoverInterruptedRestore(targetRoot);
     return { ok: true, path, restored_to: targetRoot, file_count: backup.files.length };
-  } finally {
-    if (!committed) await rm(staging, { recursive: true, force: true });
+  } catch (error) {
+    try { await recoverInterruptedRestore(targetRoot); }
+    catch (recoveryError) {
+      error.message += `; restore recovery incomplete: ${recoveryError.message}; run intake store recover`;
+    }
+    throw error;
   }
 }
 

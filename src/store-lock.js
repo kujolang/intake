@@ -5,7 +5,11 @@ import { basename, dirname, resolve } from "node:path";
 import { access, mkdir, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import { serializeWrite } from "./util.js";
 
+import { recoverInterruptedRestore, restoreJournalPath } from "./restore-journal.js";
+
 const context = new AsyncLocalStorage();
+
+export async function canonicalStoreRoot(root) { return (await identity(root)).root; }
 
 async function identity(root) {
   const absolute = resolve(root);
@@ -37,11 +41,18 @@ export async function withStoreLock(root, operation) {
   const active = context.getStore();
   const absolute = resolve(root);
   if (active?.active && active.aliases.has(absolute)) return operation();
+  // Resolve reentrant aliases before joining request queues: another request
+  // may already be queued there waiting for this transaction to finish.
+  if (active?.active) {
+    const nested = await identity(root);
+    if (active.active && active.root === nested.root) return operation();
+  }
   return serializeWrite(`store-request:${absolute}`, async () => {
     const id = await identity(root);
     if (active?.active && active.root === id.root) return operation();
     return serializeWrite(id.lock, async () => {
       if (!await absent(id.recovery)) throw conflict("store recovery is in progress");
+      if (!await absent(restoreJournalPath(id.root))) throw conflict("interrupted restore requires intake store recover");
       try {
         await writeFile(id.lock, JSON.stringify({ pid: process.pid, host: hostname(), nonce: randomUUID(), started_at: new Date().toISOString() }), { flag: "wx", mode: 0o600 });
       }
@@ -52,6 +63,7 @@ export async function withStoreLock(root, operation) {
       const state = { root: id.root, aliases: new Set([absolute, id.root]), active: true };
       try {
         if (!await absent(id.recovery)) throw conflict("store recovery is in progress");
+        if (!await absent(restoreJournalPath(id.root))) throw conflict("interrupted restore requires intake store recover");
         return await context.run(state, operation);
       } finally {
         state.active = false;
@@ -87,7 +99,10 @@ export async function recoverStoreLock(root, repair, { force = false } = {}) {
       }
       // Recovery gate excludes new acquisitions while indexes are reconstructed.
       state = { root: id.root, aliases: new Set([resolve(root), id.root]), active: true };
-      const result = await context.run(state, repair);
+      const result = await context.run(state, async () => {
+        await recoverInterruptedRestore(id.root);
+        return repair();
+      });
       await rm(id.lock, { force: true });
       return result;
     } finally {
