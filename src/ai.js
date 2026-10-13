@@ -63,7 +63,7 @@ export function aiUnavailableResult(item) {
     reason_for_risk_level: "Deterministic fallback used because AI is disabled or unavailable.",
     human_review_required: true,
     auto_action_allowed: false,
-    assumptions: ["No provider call was made."],
+    assumptions: ["No usable provider classification was available."],
     missing_context: ["Trusted account history", "Source-specific customer context"]
   };
 }

@@ -109,3 +109,20 @@ test("AI validates response limits before fetch and cancels unsuccessful bodies"
   assert.equal((await classifyWithAi(item, settings)).human_review_required, true);
   assert.equal(cancelled, true);
 });
+
+test("AI fallback does not claim that attempted provider requests never occurred", async (t) => {
+  process.env.INTAKE_FALLBACK_REVIEW_KEY = "fixture";
+  t.after(() => delete process.env.INTAKE_FALLBACK_REVIEW_KEY);
+  const settings = { ai_enabled: true, ai_provider: "openai-compatible", ai_base_url: "https://example.test", ai_api_key_env: "INTAKE_FALLBACK_REVIEW_KEY" };
+  let calls = 0;
+  t.mock.method(globalThis, "fetch", async () => ++calls === 1
+    ? new Response("unavailable", { status: 503 })
+    : Response.json({ choices: [{ message: { content: "[]" } }] }));
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const result = await classifyWithAi(makeItem({ title: "Question" }), settings);
+    assert.equal(result.human_review_required, true);
+    assert.equal(result.auto_action_allowed, false);
+    assert.equal(result.assumptions.includes("No provider call was made."), false);
+  }
+  assert.equal(calls, 2);
+});
