@@ -36,9 +36,14 @@ for (const type of ["webhook", "slack", "github"]) {
     const payload = type === "webhook" ? { id: "one", title: "Question", body: "Help" }
       : type === "slack" ? { event_id: "one", event: { type: "message", ts: "1700000000.1", channel: "C1", user: "U1", text: "Help" } }
       : { action: "opened", repository: { full_name: "example/repo" }, issue: { id: 1, number: 1, title: "Question", body: "Help" } };
-    const first = await post(payload);
+    const initial = await Promise.all(Array.from({ length: 3 }, () => post(payload)));
+    const first = initial.shift();
     assert.equal(first.status, 202);
     const { item_id } = await first.json();
+    for (const concurrent of initial) {
+      assert.equal(concurrent.status, 202);
+      assert.equal((await concurrent.json()).item_id, item_id);
+    }
     await saveItem(root, { ...await loadItem(root, item_id), assigned_human: "operator", status: "resolved", queue: "resolved" });
     const retries = await Promise.all(Array.from({ length: 3 }, () => post(payload)));
     for (const retry of retries) {
