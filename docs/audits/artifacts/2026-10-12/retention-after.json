@@ -1,0 +1,16 @@
+{
+  "node": "v26.7.0",
+  "rows": 200000,
+  "input_bytes": 94700000,
+  "elapsed_ms": 1257,
+  "peak_rss_kib": 66076,
+  "output_bytes": 47400000,
+  "output_sha256": "ce033959a79ba013fe88cbf1632c15fcaad7105722793490e9cedb61d8db4d31",
+  "compacted": [
+    {
+      "log": "sync",
+      "removed": 100000,
+      "kept": 100000
+    }
+  ]
+}

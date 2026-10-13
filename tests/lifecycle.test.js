@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp, readFile, rm, stat, utimes, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, readFile, readdir, rm, stat, symlink, utimes, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -139,5 +139,78 @@ test("purge removes quarantined attachment payloads with item raw payloads", asy
     assert.ok(result.raw_payloads.includes(attachmentPath));
     assert.equal(existsSync(rawPath), false);
     assert.equal(existsSync(attachmentFullPath), false);
+  });
+});
+
+test("retention validates every option before deleting raw payloads", async () => {
+  await withLifecycleStore(async (root, source) => {
+    const item = await createManualItem(root, source, { title: "Keep", body: "Evidence" });
+    const rawPath = join(root, item.raw_payload_path);
+    const old = new Date("2000-01-01");
+    await utimes(rawPath, old, old);
+    await assert.rejects(() => applyRetention(root, { rawDays: 1, logsDays: -1 }), /log retention days/);
+    assert.equal(existsSync(rawPath), true);
+  });
+});
+
+test("purge validates all payload paths before deleting any linked records", async () => {
+  await withLifecycleStore(async (root, source) => {
+    const item = await createManualItem(root, source, { title: "Keep", body: "Evidence" });
+    const action = makeAction({ intake_item_id: item.id, type: "mark_resolved" });
+    await saveAction(root, action);
+    for (const unsafe of ["../outside.txt", "config/sources.json", "raw"]) {
+      await saveItem(root, { ...item, attachments: [{ quarantine_path: unsafe }] });
+      await assert.rejects(() => purgeItems(root, { item: item.id, force: true }), /unsafe raw payload path/);
+      assert.equal((await listActions(root)).length, 1);
+      assert.ok(await loadItem(root, item.id));
+      assert.equal(existsSync(join(root, item.raw_payload_path)), true);
+      assert.equal(existsSync(join(root, "config", "sources.json")), true);
+    }
+  });
+});
+
+test("log retention preserves malformed, undated and UTF-8 lines while removing epoch timestamps", async () => {
+  await withLifecycleStore(async (root) => {
+    const path = join(root, "logs", "sync.jsonl");
+    const kept = ["{broken\rrecord", JSON.stringify({ message: "保留🙂".repeat(20000), timestamp: null }), JSON.stringify({ timestamp: "2099-01-01", message: "future" })];
+    await writeFile(path, [JSON.stringify({ timestamp: "1970-01-01T00:00:00.000Z" }), "", ...kept].join("\r\n"));
+    const preview = await applyRetention(root, { logsDays: 1, dryRun: true });
+    assert.deepEqual(preview.logs_compacted, [{ log: "sync", removed: 1, kept: 3 }]);
+    const result = await applyRetention(root, { logsDays: 1 });
+    assert.deepEqual(result.logs_compacted, preview.logs_compacted);
+    assert.equal(await readFile(path, "utf8"), kept.join("\n") + "\n");
+  });
+});
+
+test("retention preserves untouched bytes and file permissions and cleans failed writes", async () => {
+  await withLifecycleStore(async (root) => {
+    const path = join(root, "logs", "sync.jsonl");
+    const content = '\r\n{"timestamp":"2099-01-01"}\r\n{broken';
+    await writeFile(path, content);
+    await chmod(path, 0o600);
+    await applyRetention(root, { logsDays: 1 });
+    assert.equal(await readFile(path, "utf8"), content);
+    await writeFile(path, '{"timestamp":"2000-01-01"}\n' + content);
+    await applyRetention(root, { logsDays: 1 });
+    assert.equal((await stat(path)).mode & 0o777, 0o600);
+    await rm(path);
+    await mkdir(path);
+    await assert.rejects(() => applyRetention(root, { logsDays: 1 }));
+    assert.equal((await stat(path)).isDirectory(), true);
+    assert.equal((await readdir(join(root, "logs"))).some((name) => name.includes(".tmp-")), false);
+  });
+});
+
+test("purge rejects symlink payload directories before removing item state", async () => {
+  await withLifecycleStore(async (root, source) => {
+    const item = await createManualItem(root, source, { title: "Keep", body: "Evidence" });
+    const outside = join(root, "outside");
+    await mkdir(outside);
+    await writeFile(join(outside, "keep.txt"), "keep");
+    await symlink(outside, join(root, "raw", "linked"));
+    await saveItem(root, { ...item, raw_payload_path: "raw/linked/keep.txt" });
+    await assert.rejects(() => purgeItems(root, { item: item.id, force: true }), /unsafe raw payload path/);
+    assert.equal(await readFile(join(outside, "keep.txt"), "utf8"), "keep");
+    assert.ok(await loadItem(root, item.id));
   });
 });

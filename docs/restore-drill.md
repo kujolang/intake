@@ -52,6 +52,10 @@ Prove that a backup can be created, verified, restored into a clean directory, a
 
 ## Notes
 
+Backup `--keep` must be a positive integer when supplied. Invalid rotation options are rejected before writing or replacing the requested archive.
+
+Retention validates both day limits before deleting any payloads. Purge checks every linked payload path before deleting linked records; payloads must be regular files beneath the store's `raw/` directory with no symbolic-link components. These checks prevent invalid requests from partially deleting records; unexpected I/O failures during maintenance can still require recovery and are not a multi-file rollback transaction.
+
 Backups exclude `.intake/.env` and `.intake/secrets/` by default. That is the safer operating mode. If you intentionally include secrets for an encrypted offsite backup process, document where the archive is stored, who can decrypt it, and how it is rotated.
 
 

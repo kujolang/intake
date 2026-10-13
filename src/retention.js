@@ -1,6 +1,9 @@
 import { withStoreLock } from "./store-lock.js";
-import { mkdir, readdir, readFile, rm, stat } from "node:fs/promises";
-import { dirname, join, relative, resolve, sep } from "node:path";
+import { randomUUID } from "node:crypto";
+import { createWriteStream } from "node:fs";
+import { lstat, open, readdir, rename, rm, stat } from "node:fs/promises";
+import { join, relative, resolve, sep } from "node:path";
+import { pipeline } from "node:stream/promises";
 import {
   deleteAction,
   deleteItem,
@@ -11,7 +14,7 @@ import {
   logEvent,
   rebuildItemIndex
 } from "./storage.js";
-import { isoNow, writeTextAtomic } from "./util.js";
+import { isoNow } from "./util.js";
 
 const LOG_NAMES = ["sync", "normalize", "classify", "policy", "actions", "audit", "errors"];
 
@@ -20,6 +23,9 @@ export async function applyRetention(root, options = {}) {
 }
 
 async function applyRetentionLocked(root, options = {}) {
+  // Validate the complete request before either destructive phase starts.
+  const rawDays = retentionDays(options.rawDays, "raw");
+  const logsDays = retentionDays(options.logsDays, "log");
   const dryRun = options.dryRun === true;
   const result = {
     ok: true,
@@ -28,10 +34,10 @@ async function applyRetentionLocked(root, options = {}) {
     logs_compacted: []
   };
   if (options.rawDays !== undefined) {
-    result.raw_deleted = await pruneRaw(root, Number(options.rawDays), { dryRun });
+    result.raw_deleted = await pruneRaw(root, rawDays, { dryRun });
   }
   if (options.logsDays !== undefined) {
-    result.logs_compacted = await pruneLogs(root, Number(options.logsDays), { dryRun });
+    result.logs_compacted = await pruneLogs(root, logsDays, { dryRun });
   }
   await logEvent(root, "audit", {
     event_type: "retention_applied",
@@ -62,11 +68,13 @@ async function purgeItemsLocked(root, filters = {}) {
     item.raw_payload_path,
     ...(item.attachments || []).map((attachment) => attachment.quarantine_path)
   ]).filter(Boolean))];
+  const targets = [];
+  for (const rawPath of rawPaths) targets.push(await rawDeletionTarget(root, rawPath));
 
   if (!dryRun) {
     for (const actionId of actionIds) await deleteAction(root, actionId);
     for (const learningId of learningIds) await deleteLearning(root, learningId);
-    for (const rawPath of rawPaths) await removeRelative(root, rawPath);
+    for (const target of targets) await rm(target, { force: true });
     for (const item of matched) await deleteItem(root, item.id, { rebuildIndex: false });
     await rebuildItemIndex(root);
   }
@@ -122,7 +130,6 @@ function itemTimestamp(item) {
 }
 
 async function pruneRaw(root, days, options) {
-  if (!Number.isFinite(days) || days < 0) throw new Error("raw retention days must be a non-negative number");
   const cutoff = Date.now() - days * 24 * 60 * 60 * 1000;
   const rawRoot = join(root, "raw");
   const files = await listFiles(rawRoot);
@@ -137,35 +144,45 @@ async function pruneRaw(root, days, options) {
 }
 
 async function pruneLogs(root, days, options) {
-  if (!Number.isFinite(days) || days < 0) throw new Error("log retention days must be a non-negative number");
   const cutoff = Date.now() - days * 24 * 60 * 60 * 1000;
   const compacted = [];
   for (const name of LOG_NAMES) {
     const path = join(root, "logs", `${name}.jsonl`);
-    let raw = "";
+    let file;
     try {
-      raw = await readFile(path, "utf8");
+      file = await open(path, "r");
     } catch (error) {
       if (error.code !== "ENOENT") throw error;
       continue;
     }
-    const lines = raw.split(/\r?\n/).filter(Boolean);
-    const kept = [];
+    const tmp = `${path}.tmp-${randomUUID()}`;
+    const input = file.createReadStream({ autoClose: false, encoding: "utf8" });
+    let kept = 0;
     let removed = 0;
-    for (const line of lines) {
-      const timestamp = parseLogTimestamp(line);
-      if (timestamp && timestamp < cutoff) {
-        removed += 1;
-      } else {
-        kept.push(line);
+    async function* compact() {
+      for await (const line of logLines(input)) {
+        if (!line) continue;
+        const timestamp = parseLogTimestamp(line);
+        if (timestamp !== null && timestamp < cutoff) removed += 1;
+        else {
+          kept += 1;
+          yield `${line}\n`;
+        }
       }
     }
-    if (removed > 0) {
-      compacted.push({ log: name, removed, kept: kept.length });
-      if (!options.dryRun) {
-        await mkdir(dirname(path), { recursive: true });
-        await writeTextAtomic(path, `${kept.join("\n")}${kept.length ? "\n" : ""}`);
+    try {
+      if (options.dryRun) {
+        for await (const line of compact()) { /* Count without writing. */ }
+      } else {
+        const mode = (await file.stat()).mode & 0o777;
+        await pipeline(compact(), createWriteStream(tmp, { flags: "wx", mode }));
+        if (removed > 0) await rename(tmp, path);
       }
+      if (removed > 0) compacted.push({ log: name, removed, kept });
+    } finally {
+      input.destroy();
+      await file.close();
+      await rm(tmp, { force: true });
     }
   }
   return compacted;
@@ -174,11 +191,22 @@ async function pruneLogs(root, days, options) {
 function parseLogTimestamp(line) {
   try {
     const parsed = JSON.parse(line);
+    if (parsed.timestamp === null || parsed.timestamp === undefined) return null;
     const time = new Date(parsed.timestamp).getTime();
     return Number.isFinite(time) ? time : null;
   } catch {
     return null;
   }
+}
+
+async function* logLines(input) {
+  let pending = "";
+  for await (const chunk of input) {
+    const lines = (pending + chunk).split("\n");
+    pending = lines.pop();
+    for (const line of lines) yield line.endsWith("\r") ? line.slice(0, -1) : line;
+  }
+  if (pending) yield pending;
 }
 
 async function listFiles(dir) {
@@ -198,11 +226,27 @@ async function listFiles(dir) {
   return out;
 }
 
-async function removeRelative(root, relPath) {
+function retentionDays(value, label) {
+  if (value === undefined) return undefined;
+  const days = Number(value);
+  if (!Number.isFinite(days) || days < 0) throw new Error(`${label} retention days must be a non-negative number`);
+  return days;
+}
+
+async function rawDeletionTarget(root, relPath) {
   const rootPath = resolve(root);
+  const rawRoot = resolve(rootPath, "raw");
   const target = resolve(rootPath, String(relPath || ""));
-  if (!target.startsWith(`${rootPath}${sep}`)) throw new Error(`unsafe raw payload path: ${relPath}`);
-  await rm(target, { force: true });
+  if (!target.startsWith(`${rawRoot}${sep}`)) throw new Error(`unsafe raw payload path: ${relPath}`);
+  let current = rootPath;
+  for (const part of relative(rootPath, target).split(sep)) {
+    current = join(current, part);
+    let info;
+    try { info = await lstat(current); }
+    catch (error) { if (error.code === "ENOENT") break; throw error; }
+    if (info.isSymbolicLink() || (current === target && !info.isFile())) throw new Error(`unsafe raw payload path: ${relPath}`);
+  }
+  return target;
 }
 
 export function retentionHint() {

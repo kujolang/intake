@@ -19,6 +19,8 @@ export async function createBackup(root, options = {}) {
 }
 
 async function createBackupLocked(root, options = {}) {
+  const keep = options.keep === undefined ? null : Number(options.keep);
+  if (keep !== null && (!Number.isSafeInteger(keep) || keep < 1)) throw new Error("--keep must be a positive integer");
   await initStore(root);
   const output = options.output || defaultBackupPath(root);
   const files = await collectFiles(root, { includeSecrets: options.includeSecrets === true });
@@ -34,7 +36,7 @@ async function createBackupLocked(root, options = {}) {
   };
   await mkdir(dirname(output), { recursive: true });
   await writeGzipJson(output, backup);
-  const rotation = options.keep ? await rotateBackups(dirname(output), Number(options.keep), output) : { removed: [] };
+  const rotation = keep === null ? { removed: [] } : await rotateBackups(dirname(output), keep, output);
   await logEvent(root, "audit", {
     event_type: "backup_created",
     status: "ok",
@@ -229,7 +231,6 @@ function defaultBackupPath(root) {
 }
 
 async function rotateBackups(dir, keep, currentPath) {
-  if (!Number.isFinite(keep) || keep < 1) throw new Error("--keep must be a positive number");
   let entries = [];
   try {
     entries = await readdir(dir, { withFileTypes: true });

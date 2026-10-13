@@ -111,3 +111,14 @@ test("backup rotation preserves unrelated archives and the backup just created",
     await rm(root, { recursive: true, force: true });
   }
 });
+
+test("backup rotation validates keep before replacing the requested output", async (t) => {
+  const root = await mkdtemp(join(tmpdir(), "intake-backup-options-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const output = join(root, "keep.json.gz");
+  await writeFile(output, "existing backup");
+  for (const keep of [-1, 0, 1.5, "invalid"]) {
+    await assert.rejects(() => createBackup(join(root, "store"), { output, keep }), /--keep must be a positive integer/);
+    assert.equal(await readFile(output, "utf8"), "existing backup");
+  }
+});
