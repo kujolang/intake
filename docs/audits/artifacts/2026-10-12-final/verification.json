@@ -1,0 +1,82 @@
+{
+  "repository": "kujolang/intake",
+  "branch": "main",
+  "starting_sha": "452ed4be576f31caf3471450d4e9ab8651821c55",
+  "ending_implementation_sha": "d2d631f70e90e111ad15ac2689247d85db98633b",
+  "concurrent_first_delivery_test_commit": "88cb3e5",
+  "local_node": "26.7.0",
+  "checks": [
+    {
+      "command": "npm run verify",
+      "exit_code": 0,
+      "tests_passed": 146,
+      "log": "baseline.log",
+      "sha256": "2bf3b171a932caffc504fe1cb2a7fa01b6fa68beac7ca89365d1d906fd06c6fa"
+    },
+    {
+      "command": "node --test tests/receiver-retries.test.js tests/final-audit.test.js (initial seven cases, before fixes)",
+      "exit_code": 1,
+      "tests_passed": 0,
+      "log": "failures-before.log",
+      "sha256": "f1950236ba57272b5b074a89916cbf620bd903b5187def41b83af03d428f26e2"
+    },
+    {
+      "command": "node --test tests/receiver-retries.test.js tests/final-audit.test.js (eight cases before second backup-race test)",
+      "exit_code": 0,
+      "tests_passed": 8,
+      "log": "focused.log",
+      "sha256": "b7f5be565f1a0791a9e6e7d7e700347b75b9e5824bf6d26241e9a16054292030"
+    },
+    {
+      "command": "INTAKE_DIR=<initialized temporary store> npm run release:check (first attempt)",
+      "exit_code": 1,
+      "tests_passed": 155,
+      "log": "release.log",
+      "sha256": "807e7a12e703e586885a7b33892dcf105cf9cf5807fb28b755f9c640516af133"
+    },
+    {
+      "command": "INTAKE_DIR=<initialized temporary store> npm run release:check (isolated retry)",
+      "exit_code": 0,
+      "tests_passed": 155,
+      "log": "release-isolated.log",
+      "sha256": "47f0f2ba706492be8fa212fad14a99446789a6774709667808df591ce3b8811b"
+    },
+    {
+      "command": "npm exec --yes --package=node@20.19.0 -- node --test tests/*.test.js",
+      "exit_code": 0,
+      "tests_passed": 155,
+      "log": "node20.log",
+      "sha256": "21259896b4a9b70f3264d57a44acc081ef9c4a06e7f8f57b41f247abc2cc67fb"
+    },
+    {
+      "command": "npm run test:browser",
+      "exit_code": 0,
+      "tests_passed": null,
+      "log": "browser.log",
+      "sha256": "5dcb8c32cf7d4da32e4899220a1045f22c1a31084956c1ce24dfdfbfc969adde"
+    },
+    {
+      "command": "npm exec --yes --package=node@20.19.0 -- node --test tests/receiver-retries.test.js tests/final-audit.test.js (final concurrent-first-delivery cases)",
+      "exit_code": 0,
+      "tests_passed": 9,
+      "log": "node20-final-focused.log",
+      "sha256": "2ea6c055fb7263720f75a1acb2e57363c7c059908b89c2ac907589621c174bc3"
+    }
+  ],
+  "measurements": {
+    "command": "node scripts/bench-receipts.mjs",
+    "before": "receipts-before.json",
+    "after": "receipts-after.json",
+    "classifications_for_12_deliveries": {
+      "before": 12,
+      "after": 1
+    },
+    "latency_or_memory_improvement_claim": false
+  },
+  "notes": [
+    "Seven initial new regressions failed before fixes; two additional recovery cases were added afterward.",
+    "First release attempt passed 155 tests but smoke missed its existing dashboard startup deadline while other checks ran. Isolated retry passed without timeout/assertion changes.",
+    "Verbose logs are intentionally ignored.",
+    "Final exact-head GitHub Actions results are retained in Strata after push."
+  ]
+}
