@@ -71,6 +71,7 @@ function loadTablerIcon(name) {
 export async function startDashboard(root, options = {}) {
   await initStore(root);
   const host = options.host || "127.0.0.1";
+  const urlHost = host.includes(":") ? `[${host}]` : host;
   const localOnly = ["127.0.0.1", "localhost", "::1"].includes(host);
   const tlsEnabled = Boolean(options.tlsCert && options.tlsKey);
   if (!localOnly && options.allowNonLocal !== true) {
@@ -100,7 +101,7 @@ export async function startDashboard(root, options = {}) {
 
   const handler = async (req, res) => {
     try {
-      const url = new URL(req.url, `http://${host}:${port}`);
+      const url = new URL(req.url, `http://${urlHost}:${port}`);
       if (req.method === "GET" && (url.pathname === "/" || url.pathname === "/dashboard")) {
         return sendHtml(res, dashboardHtml());
       }
@@ -132,9 +133,16 @@ export async function startDashboard(root, options = {}) {
     server.once("error", reject);
     server.listen(port, host, () => { server.off("error", reject); resolve(); });
   });
-  await logEvent(root, "audit", { event_type: "dashboard_started", status: "ok" });
+  try {
+    await logEvent(root, "audit", { event_type: "dashboard_started", status: "ok" });
+  } catch (error) {
+    const closed = new Promise((resolve) => server.close(resolve));
+    server.closeAllConnections();
+    await closed;
+    throw error;
+  }
   const protocol = tlsEnabled ? "https" : "http";
-  return { server, host, port: server.address().port, token: activeToken, posture: posture(), url: `${protocol}://${host}:${server.address().port}/?token=${encodeURIComponent(activeToken)}` };
+  return { server, host, port: server.address().port, token: activeToken, posture: posture(), url: `${protocol}://${urlHost}:${server.address().port}/?token=${encodeURIComponent(activeToken)}` };
 }
 
 async function routeApi(root, method, url, body, session = {}) {

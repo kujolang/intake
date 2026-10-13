@@ -1,6 +1,7 @@
 import { createHash, randomUUID, timingSafeEqual } from "node:crypto";
 import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
+import { readBounded } from "./resource-limits.js";
 
 const SAFE_ID = /^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$/;
 
@@ -58,19 +59,12 @@ export function includesAny(text, terms) {
 }
 
 export async function readStreamText(stream, { maxBytes = 1024 * 1024, label = "request body" } = {}) {
-  const chunks = [];
-  let total = 0;
-  for await (const chunk of stream) {
-    const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
-    total += buffer.length;
-    if (total > maxBytes) {
-      const error = new Error(`${label} exceeds ${maxBytes} bytes`);
-      error.statusCode = 413;
-      throw error;
-    }
-    chunks.push(buffer);
+  try {
+    return (await readBounded(stream, maxBytes, label)).toString("utf8");
+  } catch (error) {
+    if (error.code === "INTAKE_RESOURCE_LIMIT") error.statusCode = 413;
+    throw error;
   }
-  return Buffer.concat(chunks, total).toString("utf8");
 }
 
 export function timingSafeEqualString(actual, expected) {

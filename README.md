@@ -233,7 +233,7 @@ intake source test support-email
 - `imap`: the inbox can be reached and authenticated.
 - `smtp`: the outbound/draft transport can be reached and authenticated.
 
-No email is sent by `source test`.
+No email is sent by `source test`. A failed readiness check exits with status 1, including with `--json`; its structured diagnostics remain available.
 
 Source test and sync status are saved on the source record so operators can see the last readiness result and last sync count in the dashboard.
 

@@ -93,10 +93,10 @@ export async function syncEmailSource(root, source) {
 }
 
 export async function sendEmailResponse(source, action, item) {
-  const transporter = nodemailer.createTransport(smtpConfig(source));
   const from = headerValue(source.config?.from || source.config?.username);
   const to = headerValue(item.author_email);
   if (!to) throw new Error("cannot send email response without item.author_email");
+  const transporter = nodemailer.createTransport(smtpConfig(source));
   try {
     const result = await transporter.sendMail({
       from,
@@ -113,7 +113,6 @@ export async function sendEmailResponse(source, action, item) {
 }
 
 export async function appendEmailDraft(source, action, item) {
-  const client = await openImap(source);
   const mailbox = source.config?.drafts_mailbox || "Drafts";
   const raw = [
     `From: ${headerValue(source.config?.from || source.config?.username)}`,
@@ -123,11 +122,21 @@ export async function appendEmailDraft(source, action, item) {
     "",
     action.body
   ].filter((line) => line !== null).join("\r\n");
+  const client = await openImap(source);
+  let appendError;
   try {
     await client.append(mailbox, Buffer.from(raw), ["\\Draft"]);
     return { appended_to: mailbox };
+  } catch (error) {
+    appendError = error;
+    throw error;
   } finally {
-    await client.logout();
+    try { await client.logout(); }
+    catch (error) {
+      client.close();
+      // Keep the failed external operation authoritative; do not mask its cause.
+      if (!appendError) throw error;
+    }
   }
 }
 
@@ -179,7 +188,7 @@ async function checkImap(source) {
   } catch (error) {
     return { ok: false, host: imapHost(source), port: imapPort(source), error: providerErrorMessage(error, source) };
   } finally {
-    if (client) await client.logout().catch(() => {});
+    if (client) await client.logout().catch(() => client.close());
   }
 }
 

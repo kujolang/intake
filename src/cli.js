@@ -201,6 +201,7 @@ async function cmdSource(root, subcommand, args, flags) {
       status: result.ok ? "ok" : "failed",
       error: result.errors?.join("; ") || null
     });
+    if (!result.ok) process.exitCode = 1;
     return flags.json ? printJson(result) : printSourceTest(result);
   }
   if (subcommand === "enable" || subcommand === "disable") {
