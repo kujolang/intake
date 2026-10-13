@@ -1,0 +1,11 @@
+{
+  "node": "v26.7.0",
+  "input_bytes": 67108864,
+  "elapsed_ms": 1436,
+  "peak_rss_kib": 103300,
+  "log_check": {
+    "id": "logs:redaction",
+    "status": "ok",
+    "message": "audit log readable"
+  }
+}

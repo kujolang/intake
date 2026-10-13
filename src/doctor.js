@@ -1,5 +1,6 @@
 import { withStoreLock } from "./store-lock.js";
-import { access, mkdir, readFile } from "node:fs/promises";
+import { mkdir } from "node:fs/promises";
+import { createReadStream } from "node:fs";
 import { join } from "node:path";
 import { REQUIRED_DIRS, STORAGE_SCHEMA_VERSION } from "./constants.js";
 import { validateSourceConfig } from "./adapters/index.js";
@@ -102,11 +103,17 @@ function secretRefLabel(secretRef) {
 async function checkLogs(root, checks) {
   const audit = join(root, "logs", "audit.jsonl");
   try {
-    await access(audit);
-    const sample = await readFile(audit, "utf8");
+    let sensitive = false, redacted = false, tail = "";
+    for await (const chunk of createReadStream(audit, { encoding: "utf8" })) {
+      const sample = tail + chunk;
+      sensitive ||= /password|secret|token/i.test(sample);
+      redacted ||= sample.includes("[REDACTED]");
+      // Preserve matches split across stream chunks (longest marker is 10 chars).
+      tail = sample.slice(-9);
+    }
     checks.push({
       id: "logs:redaction",
-      status: /password|secret|token/i.test(sample) && !sample.includes("[REDACTED]") ? "warn" : "ok",
+      status: sensitive && !redacted ? "warn" : "ok",
       message: "audit log readable"
     });
   } catch (error) {
