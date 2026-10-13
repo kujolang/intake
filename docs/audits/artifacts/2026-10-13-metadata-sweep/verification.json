@@ -1,0 +1,62 @@
+{
+  "starting_sha": "18bff3b22d7da1fac51ad66ceb5bd2f6399e86a5",
+  "ending_implementation_sha": "278ee694c6757375af6fcb0ebf02e8c5ee0a02a8",
+  "baseline": {
+    "command": "npm test",
+    "pass": 175,
+    "fail": 0
+  },
+  "reproductions": {
+    "metadata-before.log": {
+      "command": "node --test tests/migration-integrity.test.js",
+      "pass": 1,
+      "fail": 3
+    },
+    "lock-before.log": {
+      "command": "node --test tests/lock-evidence.test.js",
+      "pass": 0,
+      "fail": 1
+    }
+  },
+  "focused": {
+    "command": "node --test tests/migration-integrity.test.js tests/lock-evidence.test.js tests/store-lock.test.js tests/doctor.test.js",
+    "pass": 12,
+    "fail": 0
+  },
+  "release": {
+    "command": "INTAKE_DIR=<initialized temporary store> npm run release:check",
+    "exit": 0,
+    "pass": 180,
+    "fail": 0,
+    "node": "26.7.0"
+  },
+  "log_sha256": {
+    "baseline.log": "9b19429c8ce839a5abebb3b25cd98b22e00f07a9f8263eac7ffa03b3f01d5a88",
+    "browser.log": "5dcb8c32cf7d4da32e4899220a1045f22c1a31084956c1ce24dfdfbfc969adde",
+    "docs.log": "1b80d1a106e9faa6e20cd526e367113c84767b30a706d8a79a9eef0829ffbe11",
+    "focused.log": "e94022d8c60f769ff51d04217ea08ace830712171b9888fd9fa1b51593fe1f86",
+    "lock-before.log": "8f497320c6796470d69aed97c434be1bafd363a7c4e8ed6be6aae2914d1e5a71",
+    "lock-final.log": "03894455d5e89e8f0e52695f1bb65553495d944f218e4bb549d236593dde45ef",
+    "metadata-before.log": "c2f3b2036a8d0b3adb7849d2b514c3815fbbcd25cd2b0249c4ffcb83af260c32",
+    "node20.log": "a5a79f932cf604da644f698487059e8a24fe73b46a3b98a289292647fdac4c5e",
+    "package.log": "6898160c574fa71485b8c7f06a231408419c663e22b44e1c3bc80e625eb969d1",
+    "release.log": "9324f2c5cea6085be0a45b74dd206cf82c68daee2fbc5e3211f62bf3eb1fc521"
+  },
+  "compatibility": {
+    "command": "npm exec --yes --package=node@20.19.0 -- node --test tests/*.test.js",
+    "pass": 180,
+    "fail": 0
+  },
+  "browser": {
+    "command": "npm run test:browser",
+    "result": "passed Chromium"
+  },
+  "final_artifacts": {
+    "commands": [
+      "node scripts/check-doc-links.mjs",
+      "node scripts/check-package.mjs",
+      "git diff --cached --check"
+    ],
+    "result": "passed"
+  }
+}

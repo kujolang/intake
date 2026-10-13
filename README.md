@@ -445,6 +445,8 @@ Action execution is serialized per store, including across processes. Interrupte
 
 Use one writer process per store for general ingestion and configuration, and stop writers during backup, restore, retention and purge. Index updates and dashboard mutations are serialized within one process; the filesystem format does not provide general multi-process transactions.
 
+Initialization and staged restore reject malformed `config/meta.json` without rewriting its contents. Inspect or restore that evidence before retrying; `store recover --force` does not bypass schema validation. Pre-versioned object metadata and numeric-string schema versions remain supported. A falsy lock-owner record is unreadable ownership evidence: stop all writers before using the existing `store recover --force` path. Force never takes ownership from a live process or another host.
+
 Default backups omit inline `token`, `api_token` and `signing_secret` fields as well as `.env` and `secrets/`. Restore secret references through the environment or Keychain; use `--include-secrets` only when intentionally preserving inline credentials in a protected archive. Verification and restore limit decompressed archives to 256 MiB; `--max-bytes N` explicitly raises that limit for larger trusted archives. Restore validates and stages the complete store before replacing the destination. File-drop sources accept regular files and skip symbolic links.
 
 `npm run bench:logs` measures a 200-row page from 100,000 audit events. It checks the returned rows and reports timings; the regular benchmark gate also covers log paging. Detailed log records remain available through pagination and the JSONL files.
