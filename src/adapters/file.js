@@ -21,12 +21,15 @@ export async function syncFileSource(root, source) {
   const maxBatchBytes = resourceLimit(source.config?.max_batch_bytes, 64 * 1024 * 1024, "max_batch_bytes");
   const maxBatchItems = resourceLimit(source.config?.max_batch_items, 1000, "max_batch_items");
   let batchBytes = 0;
-  const names = await readdir(folder);
+  const names = (await readdir(folder)).sort();
+  const start = typeof source.cursor?.next_file === "string" ? names.findIndex((name) => name >= source.cursor.next_file) : 0;
+  const orderedNames = start > 0 ? [...names.slice(start), ...names.slice(0, start)] : names;
+  let nextFile = null;
   const seen = new Set(source.cursor?.seen || []);
   const items = [];
 
-  for (const name of names.sort()) {
-    if (items.length >= maxBatchItems) break;
+  for (const name of orderedNames) {
+    if (items.length >= maxBatchItems) { nextFile = name; break; }
     const path = join(folder, name);
     let info;
     try {
@@ -48,8 +51,16 @@ export async function syncFileSource(root, source) {
         const opened = await file.stat();
         if (!opened.isFile()) continue;
         if (opened.size > maxBytes) throw new Error(`file exceeds max_file_bytes (${maxBytes})`);
-        if (items.length && batchBytes + opened.size > maxBatchBytes) break;
-        buffer = await readBounded(file.createReadStream({ autoClose: false }), Math.min(maxBytes, maxBatchBytes - batchBytes), "file");
+        if (batchBytes && batchBytes + opened.size > maxBatchBytes) { nextFile = name; break; }
+        const readLimit = Math.min(maxBytes, maxBatchBytes - batchBytes);
+        try {
+          buffer = await readBounded(file.createReadStream({ autoClose: false }), readLimit, "file");
+          batchBytes += buffer.length;
+        } catch (error) {
+          // A failed read may already have consumed its full allowance.
+          batchBytes += readLimit;
+          throw error;
+        }
       } finally {
         await file.close();
       }
@@ -63,7 +74,6 @@ export async function syncFileSource(root, source) {
         item = await itemFromText(root, source, rawId, nativeId, buffer, name);
       }
       items.push(item);
-      batchBytes += buffer.length;
       seen.add(nativeId);
     } catch (error) {
       if (error?.code === "ENOENT") continue;
@@ -71,7 +81,7 @@ export async function syncFileSource(root, source) {
     }
   }
 
-  return { items, cursor: { seen: [...seen].slice(-5000), synced_at: new Date().toISOString() } };
+  return { items, cursor: { seen: [...seen].slice(-5000), next_file: nextFile, synced_at: new Date().toISOString() } };
 }
 
 async function itemFromText(root, source, rawId, nativeId, buffer, name) {
