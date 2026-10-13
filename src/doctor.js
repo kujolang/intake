@@ -1,11 +1,12 @@
+import { migrationStatus } from "./migrations.js";
 import { withStoreLock } from "./store-lock.js";
 import { mkdir } from "node:fs/promises";
 import { createReadStream } from "node:fs";
 import { join } from "node:path";
-import { REQUIRED_DIRS, STORAGE_SCHEMA_VERSION } from "./constants.js";
+import { REQUIRED_DIRS } from "./constants.js";
 import { validateSourceConfig } from "./adapters/index.js";
 import { resolveSecretRef } from "./secrets.js";
-import { loadMeta, loadPolicies, loadRules, loadSettings, loadSources, logEvent } from "./storage.js";
+import { loadPolicies, loadRules, loadSettings, loadSources, logEvent } from "./storage.js";
 
 export async function runDoctor(root) {
   return withStoreLock(root, () => runDoctorLocked(root));
@@ -41,13 +42,13 @@ async function checkFolders(root, checks) {
 async function checkConfigs(root, checks) {
   const sources = await loadSources(root);
   const settings = await loadSettings(root);
-  const meta = await loadMeta(root);
+  const schema = await migrationStatus(root);
   const policies = await loadPolicies(root);
   const rules = await loadRules(root);
   checks.push({
     id: "storage:schema",
-    status: meta.schema_version === STORAGE_SCHEMA_VERSION ? "ok" : "fail",
-    message: `schema ${meta.schema_version || "unknown"}${meta.schema_version === STORAGE_SCHEMA_VERSION ? "" : ` expected ${STORAGE_SCHEMA_VERSION}`}`
+    status: schema.ok ? "ok" : "fail",
+    message: schema.message
   });
   checks.push({ id: "settings:auto-actions", status: settings.auto_actions_enabled ? "warn" : "ok", message: settings.auto_actions_enabled ? "global auto-actions enabled" : "global auto-actions disabled" });
   checks.push({ id: "policies:present", status: policies.length ? "ok" : "fail", message: `${policies.length} policies` });
