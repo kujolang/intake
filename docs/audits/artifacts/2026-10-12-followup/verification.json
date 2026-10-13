@@ -1,0 +1,75 @@
+{
+  "starting_sha": "01e380db070a6c564b2608055365c69fecf1236d",
+  "implementation_sha": "0f43961a7b253639c57e55cfce4fddb3527d9cf2",
+  "status": "passed",
+  "checks": [
+    {
+      "command": "npm run verify",
+      "log": "baseline.log",
+      "exit_code": 0,
+      "test_count": 121,
+      "sha256": "bfc08d776969f0f4bedeb2b92a05a8e3014c942b10f30c78050ec6a2f49ee18a"
+    },
+    {
+      "command": "node --test tests/failure-paths.test.js",
+      "log": "failures-before.log",
+      "exit_code": 1,
+      "test_count": 7,
+      "sha256": "f943c5ffa26ce9749f2050b15e2e53785286a35203400d3bbbd1fac8c13f94d8"
+    },
+    {
+      "command": "node --test tests/file-cursor.test.js",
+      "log": "file-cursor-before.log",
+      "exit_code": 1,
+      "test_count": 2,
+      "sha256": "8201aebe894da2da8435686974e8aa3af59a8b8bd22c42640d008ef0f01a26e6"
+    },
+    {
+      "command": "node --test tests/file-cursor.test.js tests/failure-paths.test.js tests/resource-limits.test.js tests/email.test.js",
+      "log": "focused-after.log",
+      "exit_code": 0,
+      "test_count": 17,
+      "sha256": "0785967c30a96d5269f7d26038844ea944619b8df18ab49d544e59a1747bc8cc"
+    },
+    {
+      "command": "npm run release:check (isolated temporary INTAKE_DIR)",
+      "log": "release.log",
+      "exit_code": 0,
+      "test_count": 131,
+      "sha256": "6aa7f64284a0f4ccca0c524662ef0c21326a08d797da99b56c2e342aec67548a"
+    },
+    {
+      "command": "npm exec --yes --package=node@20.19.0 -- node --test tests/*.test.js",
+      "log": "node20.log",
+      "exit_code": 0,
+      "test_count": 131,
+      "sha256": "3ab77fb8dd9a228ad2579ee993cda84680b65b992886436052458e0c50133f4d"
+    },
+    {
+      "command": "npm run test:browser",
+      "log": "browser.log",
+      "exit_code": 0,
+      "test_count": null,
+      "sha256": "5dcb8c32cf7d4da32e4899220a1045f22c1a31084956c1ce24dfdfbfc969adde"
+    },
+    {
+      "command": "npm run docs:links",
+      "log": "final-docs.log",
+      "exit_code": 0,
+      "test_count": null,
+      "sha256": "0f9abe321183986db784e7893d7630a0737cc9dd3bb8435f9a50ac715c04b253"
+    }
+  ],
+  "baseline_expected_regressions": 9,
+  "new_tests": 10,
+  "benchmark_command": "node scripts/bench-streams.mjs",
+  "benchmark_artifacts": [
+    "streams-before.json",
+    "streams-after.json"
+  ],
+  "notes": [
+    "Pre-fix regression commands intentionally exited 1; all post-fix checks passed.",
+    "Ignored detailed logs remain local; hashes preserve provenance.",
+    "IPv6 regression added after implementation, with no claimed baseline execution."
+  ]
+}
