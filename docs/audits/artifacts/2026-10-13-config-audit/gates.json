@@ -1,0 +1,52 @@
+[
+  {
+    "command": "npm run lint",
+    "exit_code": 0,
+    "elapsed_seconds": 17.01
+  },
+  {
+    "command": "npm run docs:links",
+    "exit_code": 0,
+    "elapsed_seconds": 0.75
+  },
+  {
+    "command": "npm run smoke",
+    "exit_code": 0,
+    "elapsed_seconds": 17.94
+  },
+  {
+    "command": "node bin/intake.js eval run",
+    "exit_code": 0,
+    "elapsed_seconds": 1.2
+  },
+  {
+    "command": "npm run bench:gate",
+    "exit_code": 0,
+    "elapsed_seconds": 16.11
+  },
+  {
+    "command": "npm run bench:retention",
+    "exit_code": 0,
+    "elapsed_seconds": 2.62
+  },
+  {
+    "command": "npm audit --audit-level=high",
+    "exit_code": 0,
+    "elapsed_seconds": 2.1
+  },
+  {
+    "command": "node bin/intake.js shipcheck",
+    "exit_code": 0,
+    "elapsed_seconds": 1.15
+  },
+  {
+    "command": "node bin/intake.js doctor --json",
+    "exit_code": 0,
+    "elapsed_seconds": 0.65
+  },
+  {
+    "command": "node scripts/check-package.mjs",
+    "exit_code": 0,
+    "elapsed_seconds": 1.44
+  }
+]

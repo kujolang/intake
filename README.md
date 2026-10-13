@@ -388,6 +388,10 @@ Import a reviewed config export:
 intake config import intake-config.json --replace
 ```
 
+Imports require a complete version-1 snapshot: `sources`, `policies`, and `rules` arrays, plus a `settings` object. Invalid sections, duplicate IDs, and `[REDACTED]` inline credentials are rejected before replacing configuration. Replace redacted values with reviewed credentials or remove them and configure secret references. Exports replace the output atomically with owner-only permissions.
+
+An import writes a private sibling `STORE.intake-config-import.json` journal before changing sections. An interruption blocks normal store access; after the writer exits and any filesystem problem is repaired, run `intake store recover --dir STORE` to finish installing the reviewed snapshot. Recovery is repeatable and never performs outbound actions. Keep the journal until recovery succeeds; if it is malformed or conflicts with a restore journal, inspect the evidence instead of forcing access.
+
 ## Demo Data
 
 Seed a realistic email interaction:
@@ -444,3 +448,5 @@ Use one writer process per store for general ingestion and configuration, and st
 Default backups omit inline `token`, `api_token` and `signing_secret` fields as well as `.env` and `secrets/`. Restore secret references through the environment or Keychain; use `--include-secrets` only when intentionally preserving inline credentials in a protected archive. Verification and restore limit decompressed archives to 256 MiB; `--max-bytes N` explicitly raises that limit for larger trusted archives. Restore validates and stages the complete store before replacing the destination. File-drop sources accept regular files and skip symbolic links.
 
 `npm run bench:logs` measures a 200-row page from 100,000 audit events. It checks the returned rows and reports timings; the regular benchmark gate also covers log paging. Detailed log records remain available through pagination and the JSONL files.
+
+Automatic execution requires the literal boolean `true` for `auto_actions_enabled`. Auto-action limits and active-period counters must be nonnegative safe integers (numeric strings remain supported); malformed values block automatic execution. Zero or omitted limits retain their documented unlimited meaning.

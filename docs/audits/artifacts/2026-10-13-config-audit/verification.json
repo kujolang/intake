@@ -1,0 +1,75 @@
+{
+  "starting_sha": "f55e3fe037dde5b9bad2413f082ef13920e1712f",
+  "ending_implementation_sha": "2572cc8ad9063c7a006c8e2891cf8597391304cc",
+  "local_node": "v26.7.0",
+  "tests": {
+    "serial": {
+      "command": "node --test --test-concurrency=1 tests/*.test.js",
+      "passed": 175,
+      "failed": 0
+    },
+    "normal_release": {
+      "command": "INTAKE_DIR=<temporary initialized store> npm run release:check",
+      "passed": 174,
+      "failed": 1,
+      "failure": "existing fragmented-reader 30-second timeout also observed at baseline"
+    },
+    "node20": {
+      "command": "npm exec --yes --package=node@20.19.0 -- node --test --test-concurrency=1 tests/*.test.js",
+      "passed": 175,
+      "failed": 0
+    },
+    "focused": {
+      "command": "node --test tests/config-import.test.js tests/policy-config.test.js",
+      "passed": 10,
+      "failed": 0
+    }
+  },
+  "other_release_gates": "gates.json",
+  "log_sha256": {
+    "baseline-retry.log": "2282be2271e228272b7bed511b6dc30f4df04083d7704ba13c261f72f0e0a191",
+    "baseline.log": "d07a9f419e26d4538fb20e2b9c0a91d0fa6157fd32d98c4e0c217d4c6fbd03c8",
+    "browser.log": "5dcb8c32cf7d4da32e4899220a1045f22c1a31084956c1ce24dfdfbfc969adde",
+    "config-failures-before.log": "bef5e582bcdfed9d0b456c9e4a470cb3f5682722d3d88c9df42bd8efc7142e8b",
+    "config-focused.log": "17b227bd5711bcc00538ab44c9f350ae748c4fbc519a79b5d5bcb802265f3ca6",
+    "config-policy-final.log": "97ef26a0946daa91578563133eeeeb176473e63021ab0ad5aecb760278f340d8",
+    "doctor-heap-before.log": "a0f7ec29e8ee32cdc772b62cbddc7c1fa21f79bfd36a33860e3703cdfbeea717",
+    "final-docs.log": "1b80d1a106e9faa6e20cd526e367113c84767b30a706d8a79a9eef0829ffbe11",
+    "final-package.log": "3c35de6068404f5d818f7c2392f1706b1f475992d93392c7a52682dbc7783bf4",
+    "focused-final.log": "324f47a8b9515f750934e935511e0b5665fa92bc240109f33b896215b1c0684b",
+    "focused.log": "954fe207c2b24eca88ec3c038ad39fe745ddac098f090a04a3aca8a5f868ccf0",
+    "gates.log": "4380f35d847bcf1d64ac35427963f218d1c2bd9251ce69c9c267fa2808f4bba0",
+    "node20.log": "2ee9b933e2c064ced2f4d10d13d8e1e7aecf1b1b96ad135e4cb46bacf043c44e",
+    "policy-failures-before.log": "9900a87dd7f4696cf959181dfc3078a2442287c236e24eb6ae1fc8ed8f0d05cb",
+    "policy-focused-final.log": "26074a1ccb6676cfc47e34d18177c64915164b423ab3787f5fe7bafd6130494f",
+    "policy-focused.log": "35be0e36b78b2bd30d1d51781523c0a88bd373b1856ca304fc247d9262b4823b",
+    "release.log": "f85e9d8eca889483998abbb9af15746b96a879780b7bbf34e35e8b4ed9fcfb70",
+    "tests-serial.log": "571cc75ed4c43fd02baa724e5246f0b0b79413a04b52fbb5a516c1dd3932f29d"
+  },
+  "baseline": {
+    "command": "npm run verify",
+    "sha": "f55e3fe037dde5b9bad2413f082ef13920e1712f",
+    "passed": 162,
+    "failed": 1,
+    "failure": "fragmented bounded-reader child timeout at unchanged 30-second limit",
+    "reader_isolated_retry": "passed",
+    "smoke_continuation": "failed existing four-second dashboard startup deadline; continuation overlapped config edits"
+  },
+  "browser": {
+    "command": "npm run test:browser",
+    "result": "passed Chromium"
+  },
+  "final_artifact_checks": {
+    "commands": [
+      "node scripts/check-doc-links.mjs",
+      "node scripts/check-package.mjs",
+      "git diff --cached --check"
+    ],
+    "result": "passed"
+  },
+  "reproductions": {
+    "config-failures-before.log": "four initial regressions failed before config fixes",
+    "policy-failures-before.log": "two initial regressions failed before policy fixes",
+    "doctor-heap-before.log": "64 MiB input exhausted 48 MiB heap before streaming"
+  }
+}
