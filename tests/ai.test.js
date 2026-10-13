@@ -70,3 +70,42 @@ test("AI classification posts normalized chat completion payload", async () => {
     delete process.env.INTAKE_TEST_AI_KEY;
   }
 });
+
+test("AI classification treats invalid model shapes as unavailable", async (t) => {
+  process.env.INTAKE_SHAPE_TEST_KEY = "fixture";
+  t.after(() => delete process.env.INTAKE_SHAPE_TEST_KEY);
+  const item = makeItem({ title: "Question", body: "Please help" });
+  const settings = { ai_enabled: true, ai_provider: "openai-compatible", ai_base_url: "https://example.test", ai_api_key_env: "INTAKE_SHAPE_TEST_KEY" };
+  let content;
+  t.mock.method(globalThis, "fetch", async () => Response.json({ choices: [{ message: { content } }] }));
+  for (const value of [null, [], "text", 42, { summary: {} }, { suggested_tags: [{}] }, { confidence: 2 }, { human_review_required: "false" }]) {
+    content = JSON.stringify(value);
+    const result = await classifyWithAi(item, settings);
+    assert.equal(result.human_review_required, true, content);
+    assert.equal(result.auto_action_allowed, false, content);
+    assert.equal(typeof result.summary, "string", content);
+  }
+  content = JSON.stringify({ summary: "Valid partial result", confidence: 0, suggested_tags: ["support"] });
+  assert.deepEqual(await classifyWithAi(item, settings), JSON.parse(content));
+});
+
+test("item models preserve explicit zero AI confidence", () => {
+  assert.equal(makeItem({ title: "Low confidence", ai_confidence: 0 }).ai_confidence, 0);
+});
+
+test("AI validates response limits before fetch and cancels unsuccessful bodies", async (t) => {
+  process.env.INTAKE_SHAPE_TEST_KEY = "fixture";
+  t.after(() => delete process.env.INTAKE_SHAPE_TEST_KEY);
+  const settings = { ai_enabled: true, ai_provider: "openai-compatible", ai_base_url: "https://example.test", ai_api_key_env: "INTAKE_SHAPE_TEST_KEY" };
+  let calls = 0;
+  let cancelled = false;
+  t.mock.method(globalThis, "fetch", async () => {
+    calls++;
+    return new Response(new ReadableStream({ cancel() { cancelled = true; } }), { status: 503 });
+  });
+  const item = makeItem({ title: "Question" });
+  await assert.rejects(() => classifyWithAi(item, { ...settings, ai_max_response_bytes: -1 }), /ai_max_response_bytes/);
+  assert.equal(calls, 0);
+  assert.equal((await classifyWithAi(item, settings)).human_review_required, true);
+  assert.equal(cancelled, true);
+});

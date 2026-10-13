@@ -75,6 +75,7 @@ export async function classifyWithAi(item, settings) {
 
   const timeout = resourceLimit(settings.ai_timeout_ms, 30000, "ai_timeout_ms");
   const maxInput = resourceLimit(settings.ai_max_input_bytes, 1024 * 1024, "ai_max_input_bytes");
+  const maxResponse = resourceLimit(settings.ai_max_response_bytes, 1024 * 1024, "ai_max_response_bytes");
   if (Buffer.byteLength(JSON.stringify(item)) > maxInput) throw new Error("AI input exceeds ai_max_input_bytes; classification was not attempted");
   const response = await fetch(`${provider.base_url.replace(/\/$/, "")}/chat/completions`, {
     signal: AbortSignal.timeout(timeout),
@@ -106,16 +107,33 @@ export async function classifyWithAi(item, settings) {
       ]
     })
   });
-  if (!response.ok) return aiUnavailableResult(item);
-  const maxResponse = resourceLimit(settings.ai_max_response_bytes, 1024 * 1024, "ai_max_response_bytes");
+  if (!response.ok) {
+    await response.body?.cancel();
+    return aiUnavailableResult(item);
+  }
   const payload = response.body
     ? JSON.parse((await readBounded(response.body, maxResponse, "AI response")).toString("utf8"))
     : await response.json();
   try {
-    return JSON.parse(payload.choices?.[0]?.message?.content || "{}");
+    const result = JSON.parse(payload?.choices?.[0]?.message?.content || "null");
+    return validClassification(result) ? result : aiUnavailableResult(item);
   } catch {
     return aiUnavailableResult(item);
   }
+}
+
+function validClassification(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const strings = ["summary", "suggested_category", "suggested_queue", "suggested_action", "reason_for_risk_level"];
+  if (strings.some((key) => value[key] != null && typeof value[key] !== "string")) return false;
+  for (const key of ["suggested_tags", "assumptions", "missing_context"]) {
+    if (value[key] != null && (!Array.isArray(value[key]) || !value[key].every((entry) => typeof entry === "string"))) return false;
+  }
+  for (const key of ["human_review_required", "auto_action_allowed"]) {
+    if (value[key] != null && typeof value[key] !== "boolean") return false;
+  }
+  if (value.confidence != null && (!Number.isFinite(value.confidence) || value.confidence < 0 || value.confidence > 1)) return false;
+  return value.risk_level == null || ["low", "medium", "high", "critical"].includes(value.risk_level);
 }
 
 export function resolveAiProvider(settings = {}) {
