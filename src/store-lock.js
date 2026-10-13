@@ -1,3 +1,4 @@
+import { configImportJournalPath, recoverConfigImport } from "./config-import.js";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { randomUUID } from "node:crypto";
 import { hostname } from "node:os";
@@ -63,6 +64,7 @@ export async function withStoreLock(root, operation) {
     return serializeWrite(id.lock, async () => {
       if (!await absent(id.recovery)) throw conflict("store recovery is in progress");
       if (!await absent(restoreJournalPath(id.root))) throw conflict("interrupted restore requires intake store recover");
+      if (!await absent(configImportJournalPath(id.root))) throw conflict("interrupted config import requires intake store recover");
       try {
         await writeFile(id.lock, JSON.stringify({ pid: process.pid, host: hostname(), nonce: randomUUID(), started_at: new Date().toISOString() }), { flag: "wx", mode: 0o600 });
       }
@@ -74,6 +76,7 @@ export async function withStoreLock(root, operation) {
       try {
         if (!await absent(id.recovery)) throw conflict("store recovery is in progress");
         if (!await absent(restoreJournalPath(id.root))) throw conflict("interrupted restore requires intake store recover");
+        if (!await absent(configImportJournalPath(id.root))) throw conflict("interrupted config import requires intake store recover");
         return await context.run(state, operation);
       } finally {
         state.active = false;
@@ -110,7 +113,9 @@ export async function recoverStoreLock(root, repair, { force = false } = {}) {
       // Recovery gate excludes new acquisitions while indexes are reconstructed.
       state = { root: id.root, aliases: new Set([resolve(root), id.root]), active: true };
       const result = await context.run(state, async () => {
+        if (!await absent(restoreJournalPath(id.root)) && !await absent(configImportJournalPath(id.root))) throw conflict("multiple interrupted operations; inspect journals before recovery");
         await recoverInterruptedRestore(id.root);
+        await recoverConfigImport(id.root);
         return repair();
       });
       await rm(id.lock, { force: true });

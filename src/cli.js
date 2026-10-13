@@ -1,5 +1,6 @@
-import { withStoreLock, recoverStoreLock } from "./store-lock.js";
-import { readFile, writeFile } from "node:fs/promises";
+import { importConfig } from "./config-import.js";
+import { withStoreLock, recoverStoreLock, canonicalStoreRoot } from "./store-lock.js";
+import { readFile } from "node:fs/promises";
 import { testSource } from "./adapters/index.js";
 import { createBackup, restoreBackup, verifyBackup } from "./backup.js";
 import { createManualItem } from "./adapters/manual.js";
@@ -39,9 +40,7 @@ import {
   resolveIntakeDir,
   saveAction,
   saveItem,
-  savePolicies,
   saveRules,
-  saveSettings,
   saveSources,
   logEvent
 } from "./storage.js";
@@ -55,7 +54,7 @@ import {
   setAutoActions,
   syncAll
 } from "./workflow.js";
-import { assertSafeId, isoNow, parseCsv } from "./util.js";
+import { assertSafeId, isoNow, parseCsv, writeJsonAtomic } from "./util.js";
 
 export async function main(argv) {
   const { flags, positionals } = parseArgs(argv);
@@ -259,7 +258,7 @@ async function cmdConfig(root, subcommand, args, flags) {
     };
     const output = flags.output;
     if (output) {
-      await writeFile(output, `${JSON.stringify(payload, null, 2)}\n`, "utf8");
+      await writeJsonAtomic(output, payload, { mode: 0o600 });
       return console.log(output);
     }
     return printJson(payload);
@@ -270,10 +269,7 @@ async function cmdConfig(root, subcommand, args, flags) {
     const payload = JSON.parse(await readFile(path, "utf8"));
     if (!payload || payload.version !== 1) throw new Error("unsupported config export");
     if (flags.replace !== true) throw new Error("config import requires --replace to avoid accidental overwrite");
-    await saveSources(root, payload.sources || []);
-    await savePolicies(root, payload.policies || []);
-    await saveRules(root, payload.rules || []);
-    if (payload.settings) await saveSettings(root, payload.settings);
+    await importConfig(await canonicalStoreRoot(root), payload);
     await logEvent(root, "audit", { event_type: "config_imported", status: "ok", input_refs: [path] });
     return printJson({ ok: true, imported: path });
   }

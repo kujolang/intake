@@ -87,15 +87,15 @@ export async function readJson(path, fallback) {
   }
 }
 
-export async function writeJsonAtomic(path, value) {
-  return writeTextAtomic(path, `${JSON.stringify(value, null, 2)}\n`);
+export async function writeJsonAtomic(path, value, options = {}) {
+  return writeTextAtomic(path, `${JSON.stringify(value, null, 2)}\n`, options);
 }
 
-export async function writeTextAtomic(path, value) {
+export async function writeTextAtomic(path, value, { mode } = {}) {
   await mkdir(dirname(path), { recursive: true });
   const tmp = `${path}.tmp-${process.pid}-${randomUUID()}`;
   try {
-    await writeFile(tmp, value, { flag: "wx" });
+    await writeFile(tmp, value, { flag: "wx", ...(mode === undefined ? {} : { mode }) });
     await rename(tmp, path);
   } catch (error) {
     await rm(tmp, { force: true }).catch(() => {});

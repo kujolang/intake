@@ -152,3 +152,7 @@ coverage/
 # Cross-process store ownership and recovery state
 *.intake-lock
 *.intake-recovery/
+*.intake-config-import.json
+*.intake-restore.json
+*.restore-*/
+*.previous-*/
