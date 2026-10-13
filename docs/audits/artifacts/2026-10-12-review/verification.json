@@ -1,0 +1,76 @@
+{
+  "review_range": "6f64126bdaa9a33b82f2b0d2dfdb8726828d0b00..dcd586560f6fc51fc0602ec809efbde3b6037928",
+  "starting_sha": "dcd586560f6fc51fc0602ec809efbde3b6037928",
+  "implementation_sha": "cb7ae7b04ee3d887b6e33306552c3e062fa7bade",
+  "status": "passed",
+  "checks": [
+    {
+      "command": "npm test",
+      "log": "baseline.log",
+      "exit_code": 0,
+      "result": "142 passed on starting revision",
+      "sha256": "d31eca24f089ea7efa1b1c16212fa31ad0653a933be9356aeb63166770f63a23"
+    },
+    {
+      "command": "node --test tests/audit-review.test.js",
+      "log": "failures-before.log",
+      "exit_code": 1,
+      "result": "three expected pre-fix failures",
+      "sha256": "3c009df28112e0bf2dfe04ed13fd643e192a4bb97c6fd5365480aa0a79a9324f"
+    },
+    {
+      "command": "node --test --test-name-pattern=\"AI fallback does not\" tests/ai.test.js",
+      "log": "ai-before.log",
+      "exit_code": 1,
+      "result": "expected pre-fix metadata failure",
+      "sha256": "c985cb6f58ab0dbc16b7d145a35bb5a7fca9a7da46af7cbf66bbc36a3f83722c"
+    },
+    {
+      "command": "node --test tests/audit-review.test.js tests/recovery.test.js tests/attachments.test.js tests/lifecycle.test.js",
+      "log": "focused-after.log",
+      "exit_code": 0,
+      "result": "25 passed",
+      "sha256": "f365445385f81048e3b33b744cbdc74a04986e2e538a2de7608b5e2e56ba64dc"
+    },
+    {
+      "command": "npm run release:check (isolated temporary INTAKE_DIR)",
+      "log": "release.log",
+      "exit_code": 0,
+      "result": "146 tests and all release gates passed",
+      "sha256": "58531bc06b3d72e4eff6d5c5ae9bd91b95ede4e962c2237d9ae48142bd8a13f2"
+    },
+    {
+      "command": "npm exec --yes --package=node@20.19.0 -- node --test tests/*.test.js",
+      "log": "node20.log",
+      "exit_code": 0,
+      "result": "146 passed",
+      "sha256": "a8b4a0ff757bd1e373d27eb9151662234d16ed35b84f1b8355534d586ed7b545"
+    },
+    {
+      "command": "npm run test:browser",
+      "log": "browser.log",
+      "exit_code": 0,
+      "result": "Chromium passed",
+      "sha256": "5dcb8c32cf7d4da32e4899220a1045f22c1a31084956c1ce24dfdfbfc969adde"
+    },
+    {
+      "command": "npm run docs:links",
+      "log": "final-docs.log",
+      "exit_code": 0,
+      "result": "passed",
+      "sha256": "0f9abe321183986db784e7893d7630a0737cc9dd3bb8435f9a50ac715c04b253"
+    },
+    {
+      "command": "node scripts/check-package.mjs",
+      "log": "final-package.log",
+      "exit_code": 0,
+      "result": "tracked-only package passed",
+      "sha256": "5ee428a74040c1e9652f7a3dd18a225210244273ad2a81ac245d8477ea6e4104"
+    }
+  ],
+  "notes": [
+    "Detailed logs are local and ignored; hashes preserve provenance.",
+    "POSIX FIFO regression runs on macOS/Linux; skipped on Windows.",
+    "No performance gain or power-loss durability claim."
+  ]
+}
