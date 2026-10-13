@@ -1,7 +1,9 @@
 import { withStoreLock } from "./store-lock.js";
-import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
+import { constants } from "node:fs";
+import { mkdir, open, realpath, writeFile } from "node:fs/promises";
 import { basename, extname, join, relative, resolve, sep } from "node:path";
 import { assertSafeId, shortHash } from "./util.js";
+import { readBounded, resourceLimit } from "./resource-limits.js";
 
 const MAX_ATTACHMENT_DOWNLOAD_BYTES = 25 * 1024 * 1024;
 
@@ -63,13 +65,20 @@ async function readQuarantinedAttachmentLocked(root, item, index, options = {}) 
   const target = resolve(rootPath, String(attachment.quarantine_path));
   if (!target.startsWith(`${quarantineRoot}${sep}`)) throw new Error("unsafe attachment quarantine path");
 
-  const info = await stat(target);
-  const maxBytes = Number(options.maxBytes || MAX_ATTACHMENT_DOWNLOAD_BYTES);
-  if (!Number.isFinite(maxBytes) || maxBytes <= 0) throw new Error("invalid attachment download size limit");
-  if (!info.isFile()) throw new Error("attachment quarantine target is not a file");
-  if (info.size > maxBytes) throw new Error(`attachment exceeds download limit of ${maxBytes} bytes`);
-
-  const content = await readFile(target);
+  const canonicalRoot = await realpath(rootPath);
+  const canonicalTarget = await realpath(target);
+  if (!canonicalTarget.startsWith(`${join(canonicalRoot, "raw", "attachments")}${sep}`)) throw new Error("unsafe attachment quarantine path");
+  const maxBytes = resourceLimit(options.maxBytes, MAX_ATTACHMENT_DOWNLOAD_BYTES, "attachment download size limit");
+  const file = await open(target, constants.O_RDONLY | constants.O_NOFOLLOW);
+  let content;
+  try {
+    const info = await file.stat();
+    if (!info.isFile()) throw new Error("attachment quarantine target is not a file");
+    if (info.size > maxBytes) throw new Error(`attachment exceeds download limit of ${maxBytes} bytes`);
+    content = await readBounded(file.createReadStream({ autoClose: false }), maxBytes, "attachment");
+  } finally {
+    await file.close();
+  }
   return {
     ...attachmentInventory({ attachments: [attachment] })[0],
     item_id: item.id,

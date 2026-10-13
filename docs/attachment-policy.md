@@ -16,8 +16,8 @@ Email and file adapters record attachment metadata such as filename, content typ
 - Show sanitized attachment inventory in the dashboard.
 - Allow explicit dashboard download of quarantined attachments through a token-authenticated API.
 - Record attachment downloads in the audit log.
-- Reject quarantine paths outside `.intake/raw/attachments/`.
-- Enforce a 25 MB per-download limit.
+- Reject quarantine paths and symbolic-link escapes outside `.intake/raw/attachments/`; final-component symbolic links are refused.
+- Enforce a 25 MiB per-download limit on both the opened file size and streamed bytes, including growth during a read. The storage API's optional `maxBytes` must be a positive integer no greater than 2,147,483,647.
 
 ## Remaining Hardening
 
