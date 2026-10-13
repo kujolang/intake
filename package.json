@@ -1,6 +1,6 @@
 {
   "name": "kujo-intake",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Local-first source-agnostic business intake for the Kujo ecosystem.",
   "type": "module",
   "private": true,

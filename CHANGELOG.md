@@ -8,13 +8,23 @@ This project follows a lightweight semantic versioning policy:
 - Minor: new adapters, CLI commands, dashboard features, and backwards-compatible storage additions.
 - Major: storage schema changes that require migration, command contract breaks, or policy behavior changes that can affect operator safety.
 
-## Unreleased
+## 0.2.0 — 2026-10-13
+
+First tagged GitHub release. Distributed as Node.js source; not published to npm or Kennel.
+
+- Added persistent receiver receipts so retries preserve reviewed items and operator changes.
+- Added store locks, interrupted restore/config-import recovery, and validation that preserves corrupt metadata and records for inspection.
+- Hardened automatic-action approval, rate budgets, credential handling, atomic exports, backups, retention, and bounded network/file reads.
+- Streamed large log operations and added bounded-heap regressions.
+- Added regression coverage for process interruptions, concurrent requests, failed writes, and malformed persisted state.
+- Aligned package, CLI, README, and release versions; clarified installation and operating limits.
+
 
 - Reworked the local dashboard around familiar Inbox, Later, Mine, Unassigned, Done, and Approvals workflows.
 - Added persistent snooze and local-operator assignment actions, keyboard navigation, Quick commands, responsive inbox navigation, and simplified everyday settings.
 - Added a non-mutating live email provider verification command and recorded successful IMAP/SMTP connection evidence.
 
-## 0.1.0
+## 0.1.0 — development baseline (untagged)
 
 - Initial local-first Intake implementation.
 - CLI, dashboard, storage, policy, rules, evals, demo seed, PrivateEmail adapter, webhook/file/manual adapters.

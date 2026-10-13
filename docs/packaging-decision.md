@@ -1,31 +1,21 @@
-# Packaging Decision
+# Distribution and release gates
 
-Current decision: keep Kujo Intake private while it is being hardened as a showcase app and local-first reference implementation.
+Intake 0.2.0 is a public GitHub source release for local operators. Its npm manifest keeps `private: true` to prevent accidental registry publication. That flag does not make the GitHub repository private.
 
-## Why `private: true` Remains
+Install from the tagged checkout with Node.js 20.19 or newer, `npm ci`, and `npm link`. The release also supplies a tracked-file package archive and checksum. Intake has no Kennel manifest or native Kujo entrypoint and is not enrolled in the Kennel registry.
 
-- Live PrivateEmail and Slack smoke tests still need to be completed with disposable real accounts.
-- Remote CI is passing on Node 20.19, 22, and 24 with the Chromium browser test; release evidence must still be checked for the revision being published.
-- Storage migration hooks exist, but there has not yet been a real schema migration.
-- Dashboard first-run onboarding is not complete.
-- GitHub has provider-aware webhook intake and approved comment writeback, but Jira, Linear, and ClickUp still need provider-native writeback actions.
+## GitHub source release
 
-## Intended Distribution Path
+Before tagging:
 
-1. Internal showcase app and local operator tool.
-2. Public example repository once CI/release gates are proven.
-3. npm package or Kujo package after live-source gates and support expectations are finalized.
-4. Optional bundled binary only if non-Node operators become a target audience.
+- Align package, lockfile, CLI, README, changelog, and release notes.
+- Pass `npm run release:check` and Chromium verification.
+- Confirm the intended commit passes the Node 20.19/22/24 CI matrix.
+- Run `node scripts/check-package.mjs`; package only tracked, reviewed files.
+- Record limitations and publish the tag, archive, and checksum together.
 
-## Publish Preconditions
+## Broader distribution
 
-- `npm run verify` passes.
-- `npm run release:check` passes.
-- `intake shipcheck` has no local failures and external blockers are satisfied with evidence.
-- Release checklist passes.
-- `CHANGELOG.md` has a current entry.
-- `README.md` reflects the actual release state.
-- Live email and Slack smoke tests are completed.
-- Remote CI has passed `npm run release:check` across the supported Node matrix on the branch intended for release.
-- `node scripts/check-package.mjs` passes, proving every archived file is tracked and intentionally reviewable; local audit command transcripts remain excluded.
-- Support and security contact expectations are documented.
+Publishing to npm, adding Kennel support, or claiming enterprise readiness requires a separate decision. Live email and Slack evidence, support expectations, deployment access controls, and recovery procedures must match the intended environment. The current local release gates do not establish those properties.
+
+The app already supports policy-gated GitHub comment writeback. Jira, Linear, and ClickUp provide inbound normalization; do not imply equivalent provider-native writeback. Storage migration hooks exist, but no schema-changing migration has shipped.

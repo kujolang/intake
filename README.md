@@ -1,14 +1,12 @@
 # Kujo Intake
 
-[![Version](https://img.shields.io/badge/version-1.0.0-black)](https://github.com/kujolang/intake)
+[![Version](https://img.shields.io/badge/version-0.2.0-black)](https://github.com/kujolang/intake/releases/tag/v0.2.0)
 [![License](https://img.shields.io/badge/license-MIT-lightgrey)](LICENSE)
 [![built with Kujo](https://img.shields.io/badge/built%20with-Kujo-white.svg)](https://github.com/kujolang/kujo)
 
-Kujo Intake turns inbound business noise into agent-readable work.
+Kujo Intake collects email, webhooks, file drops, and manual input into a local work queue. It keeps the original payload, applies routing rules, and checks policy before running an action. Operators can review drafts, approve actions, and export learnings to Strata or TotalRecall-compatible files.
 
-It is a local-first intake layer for email, webhooks, local file drops, and manual operator input. Intake normalizes every source into a durable `IntakeItem`, applies deterministic rules and safety checks, proposes actions, requires approval where policy says it must, and exports reviewed learnings to Strata and TotalRecall-compatible files.
-
-Intake is designed as a showcase-quality reference app for the Kujo ecosystem: practical enough to run locally, small enough to understand, and structured enough to extend into new source adapters and agent workflows.
+Version **0.2.0** is the first tagged GitHub release. It runs on Node.js 20.19 or newer and stores state in local files. Read the [release notes](docs/releases/0.2.0.md) before upgrading an existing checkout.
 
 ## What It Does
 
@@ -24,50 +22,25 @@ Source -> Adapter -> Raw payload -> IntakeItem -> Rules/Safety -> Queue -> Draft
 - Stores raw payloads, normalized records, actions, learnings, indexes, and logs under `.intake/`.
 - Runs with or without AI; AI hooks must pass through the same policy and audit path as deterministic actions.
 
-Intake is not an email client, not TotalRecall, and not BZBY. Email is one adapter. TotalRecall remembers what happened. BZBY can later operate across queues. Intake owns the active question: what just came in, and what should happen next?
+## Release scope
 
-## Current Readiness
+Use Intake as a local operator tool and a reference for source adapters. The dashboard binds to localhost and requires a token. Outbound actions pass through policy and approval checks; direct email sending is blocked by default.
 
-This project is ready for local-first live mailbox smoke testing and source-adapter development. It is not yet a fully packaged enterprise deployment.
+The app includes backups, retention, source health checks, redacted logs, bounded input processing, and recovery for interrupted local writes. Those checks do not establish readiness for a shared enterprise deployment. Validate live providers, infrastructure, access controls, and recovery requirements for your environment; see the [readiness guide](docs/next-production-readiness-sweep.md).
 
-Production-oriented safeguards already in place:
-
-- Local-only dashboard binding by default.
-- Token-authenticated dashboard API.
-- Secret references instead of stored mailbox passwords.
-- `.env`, `.intake/.env`, and macOS Keychain secret support.
-- IMAP and SMTP readiness checks for email sources.
-- Secure IMAP/SMTP defaults for PrivateEmail.
-- Atomic JSON writes for local state.
-- Storage schema metadata and doctor validation.
-- Portable backup, verify, restore, and rotation commands.
-- Retention and safe purge controls.
-- Native signed Slack Events API receiver.
-- Provider-aware GitHub, Jira, Linear, and ClickUp issue webhook receivers.
-- Approved GitHub issue comments behind policy and human approval gates.
-- Source templates for common systems.
-- Deterministic audit/error/action/sync logs with redaction.
-- Bounded dashboard and webhook request bodies.
-- Dashboard launch tokens are removed from the browser URL after capture.
-- Constant-time webhook token checks.
-- Safe record ID and raw-payload path handling.
-- Optional HTTPS for explicitly non-local dashboard deployments.
-- Explicit stable dashboard token required for non-local dashboard deployments.
-- Compact item index dedupe path for fast repeated no-op syncs.
-- Compact sorted indexes for warm dashboard item, action, and learning reads.
-- Default policy blocks direct `send_response`.
-
-Before calling it enterprise-ready for a team or customer deployment, validate the remaining work in the [next production-readiness sweep](docs/next-production-readiness-sweep.md).
+This release is distributed through GitHub. The npm package remains private, and Intake is not a Kennel package. Its implementation is JavaScript; it does not require the Kujo runtime.
 
 ## Install
 
 ```sh
-npm install
+git clone --branch v0.2.0 https://github.com/kujolang/intake.git
+cd intake
+npm ci
 npm link
 intake init
 ```
 
-Requires Node.js 20.19.0 or newer (matching the locked email parser dependencies).
+Requires Node.js 20.19.0 or newer.
 
 Without `npm link`, run commands through Node:
 
@@ -75,7 +48,7 @@ Without `npm link`, run commands through Node:
 node bin/intake.js init
 ```
 
-New developers should start with [docs/developer-onboarding-howto.md](docs/developer-onboarding-howto.md) for local setup, architecture, source adapters, dashboard workflow, testing gates, and PR expectations.
+Start with [docs/developer-onboarding-howto.md](docs/developer-onboarding-howto.md) for setup, architecture, adapters, tests, and contribution guidance.
 
 ## Common Commands
 
@@ -164,7 +137,7 @@ intake templates show github-webhook
 Create a Slack source with the app signing secret stored outside config:
 
 ```sh
-INTAKE_SLACK_SIGNING_SECRET="slack-signing-secret"
+export INTAKE_SLACK_SIGNING_SECRET="slack-signing-secret"
 
 intake source add slack \
   --id slack-support \
@@ -418,7 +391,7 @@ npm run bench -- --items 1000 --logs 10000 --fileRows 1000 --actions 1000 --lear
 npm run bench -- --items 100 --logs 100000 --fileRows 0 --actions 0 --learnings 0 --dashboard false
 ```
 
-The built-in test and eval suite covers routing and safety cases from the original build prompt, including refunds, legal threats, prompt injection, Slack-style bug reports, webhook payloads, generated high-volume sync dedupe, learning generation, dashboard policy previews, and auto-action policy checks. `npm run verify` also runs the benchmark gate so warm dashboard and repeated-sync latency regressions fail locally before release. `npm run release:check` adds shipcheck, doctor, and package dry-run checks on top of verify. `intake shipcheck` reports local release health plus external enterprise blockers such as live-source and remote-CI evidence.
+The tests and evals cover refunds, legal threats, prompt injection, Slack-style bug reports, webhook payloads, generated high-volume sync dedupe, learning generation, dashboard policy previews, and auto-action policy checks. `npm run verify` also runs the benchmark gate so warm dashboard and repeated-sync latency regressions fail locally before release. `npm run release:check` adds shipcheck, doctor, and package dry-run checks on top of verify. `intake shipcheck` reports local release health plus external enterprise blockers such as live-source and remote-CI evidence.
 
 ## Project Structure
 
@@ -432,10 +405,7 @@ docs/               Architecture, setup, security, and roadmap docs
 .intake/            Local runtime state, ignored by git
 ```
 
-There are no required root-level runtime files outside `bin/`, `src/`, `tests/`, `docs/`, `.github/`, `README.md`, `CHANGELOG.md`, `package.json`, and `package-lock.json`.
-
-
-### Hardening and operational limits
+## Recovery and operating limits
 
 The [repository hardening audit](docs/audits/repository-hardening.md) records the baseline, fixes, measurements, verification and remaining work.
 
@@ -443,7 +413,7 @@ Automatic execution requires a matching policy, sufficient confidence, no rule v
 
 Action execution is serialized per store, including across processes. Interrupted or failed execution is marked `executing` or `execution_uncertain`; reconcile the external effect before explicitly approving a retry. If `.action-lock` remains after a crash, stop writers and reconcile the affected actions before removing it. Automatic budgets reserve an attempt before execution and therefore include uncertain attempts. This prevents blind retries; it does not promise exactly-once delivery at external providers.
 
-Use one writer process per store for general ingestion and configuration, and stop writers during backup, restore, retention and purge. Index updates and dashboard mutations are serialized within one process; the filesystem format does not provide general multi-process transactions.
+Run one writer process per store. Store locks serialize operations within a process and reject competing processes; they are not a distributed transaction system. Stop active writers before maintenance or recovery.
 
 Initialization and staged restore reject malformed `config/meta.json` without rewriting its contents. Inspect or restore that evidence before retrying; `store recover --force` does not bypass schema validation. Pre-versioned object metadata and numeric-string schema versions remain supported. A falsy lock-owner record is unreadable ownership evidence: stop all writers before using the existing `store recover --force` path. Force never takes ownership from a live process or another host.
 
