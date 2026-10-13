@@ -2,7 +2,7 @@ import { AsyncLocalStorage } from "node:async_hooks";
 import { randomUUID } from "node:crypto";
 import { hostname } from "node:os";
 import { basename, dirname, resolve } from "node:path";
-import { access, mkdir, readFile, realpath, rm, writeFile } from "node:fs/promises";
+import { access, lstat, mkdir, readFile, readlink, realpath, rm, writeFile } from "node:fs/promises";
 import { serializeWrite } from "./util.js";
 
 import { recoverInterruptedRestore, restoreJournalPath } from "./restore-journal.js";
@@ -11,12 +11,22 @@ const context = new AsyncLocalStorage();
 
 export async function canonicalStoreRoot(root) { return (await identity(root)).root; }
 
-async function identity(root) {
+async function identity(root, links = new Set()) {
   const absolute = resolve(root);
   let canonical;
   try { canonical = await realpath(absolute); }
   catch (error) {
     if (error.code !== "ENOENT") throw error;
+    // During a restore swap the canonical target is temporarily absent. A root
+    // symlink must still identify that target's sibling lock and journal.
+    let entry;
+    try { entry = await lstat(absolute); }
+    catch (entryError) { if (entryError.code !== "ENOENT") throw entryError; }
+    if (entry?.isSymbolicLink()) {
+      if (links.has(absolute) || links.size >= 40) throw Object.assign(new Error("store symlink loop"), { code: "ELOOP" });
+      links.add(absolute);
+      return identity(resolve(dirname(absolute), await readlink(absolute)), links);
+    }
     await mkdir(dirname(absolute), { recursive: true });
     canonical = resolve(await realpath(dirname(absolute)), basename(absolute));
   }

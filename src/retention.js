@@ -132,6 +132,10 @@ function itemTimestamp(item) {
 async function pruneRaw(root, days, options) {
   const cutoff = Date.now() - days * 24 * 60 * 60 * 1000;
   const rawRoot = join(root, "raw");
+  let info;
+  try { info = await lstat(rawRoot); }
+  catch (error) { if (error.code === "ENOENT") return []; throw error; }
+  if (!info.isDirectory() || info.isSymbolicLink()) throw new Error("unsafe raw retention root");
   const files = await listFiles(rawRoot);
   const deleted = [];
   for (const file of files) {

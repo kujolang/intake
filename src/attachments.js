@@ -69,7 +69,7 @@ async function readQuarantinedAttachmentLocked(root, item, index, options = {}) 
   const canonicalTarget = await realpath(target);
   if (!canonicalTarget.startsWith(`${join(canonicalRoot, "raw", "attachments")}${sep}`)) throw new Error("unsafe attachment quarantine path");
   const maxBytes = resourceLimit(options.maxBytes, MAX_ATTACHMENT_DOWNLOAD_BYTES, "attachment download size limit");
-  const file = await open(target, constants.O_RDONLY | constants.O_NOFOLLOW);
+  const file = await open(target, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
   let content;
   try {
     const info = await file.stat();
