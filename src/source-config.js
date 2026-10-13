@@ -53,7 +53,7 @@ export function buildSourceFromInput(input, existing = null) {
   const secret_ref = sourceSecretRef(input, existing);
   if (secret_ref) validateSecretRef(secret_ref, input.id || existing?.id || type);
 
-  return makeSource(type, {
+  return { ...existing, ...makeSource(type, {
     id: sourceId(input.id || existing?.id),
     name: input.name || existing?.name || type,
     enabled: booleanInput(input.enabled, existing?.enabled ?? true),
@@ -66,7 +66,7 @@ export function buildSourceFromInput(input, existing = null) {
     cursor: existing?.cursor || null,
     capabilities: capabilitiesFor(type),
     created_at: existing?.created_at
-  });
+  }) };
 }
 
 function sourceId(id) {

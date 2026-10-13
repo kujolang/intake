@@ -130,6 +130,9 @@ function renderStrataNote(day, items, learnings) {
     "## Suggested knowledge updates",
     renderLearningList(learnings, "item_learning"),
     "",
+    "## Other learnings",
+    renderLearningList(learnings, null),
+    "",
     "## Follow-up tasks",
     "- Review high-risk and critical items before any outbound action.",
     ""
@@ -158,6 +161,7 @@ function renderQueueItems(items, queue) {
 }
 
 function renderLearningList(learnings, type) {
-  const rows = learnings.filter((learning) => learning.type === type);
+  const knownTypes = ["faq_candidate", "agent_mistake", "rule_suggestion", "item_learning"];
+  const rows = learnings.filter((learning) => type === null ? !knownTypes.includes(learning.type) : learning.type === type);
   return rows.length ? rows.map((learning) => `- ${learning.title}: ${learning.summary}`).join("\n") : "- none";
 }

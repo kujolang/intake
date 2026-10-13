@@ -247,8 +247,12 @@ async function rotateBackups(dir, keep, currentPath) {
     if (!entry.isFile() || !entry.name.endsWith(".json.gz")) continue;
     const path = join(dir, entry.name);
     if (path !== currentPath && !await hasBackupHeader(path)) continue;
-    const info = await stat(path);
-    backups.push({ path, mtimeMs: info.mtimeMs });
+    try {
+      const info = await stat(path);
+      backups.push({ path, mtimeMs: info.mtimeMs });
+    } catch (error) {
+      if (error.code !== "ENOENT" || path === currentPath) throw error;
+    }
   }
   backups.sort((a, b) => {
     if (a.path === currentPath) return -1;
@@ -266,6 +270,7 @@ async function rotateBackups(dir, keep, currentPath) {
 async function hasBackupHeader(path) {
   const source = createReadStream(path);
   const gunzip = source.pipe(createGunzip());
+  source.on("error", (error) => gunzip.destroy(error));
   let prefix = "";
   try {
     for await (const chunk of gunzip) {
