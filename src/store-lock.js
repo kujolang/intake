@@ -104,6 +104,11 @@ export async function recoverStoreLock(root, repair, { force = false } = {}) {
         if (!await absent(id.lock) && !force) throw conflict("lock ownership is unreadable; stop all writers and use store recover --force");
         if (error.code !== "ENOENT" && !(error instanceof SyntaxError)) throw error;
       }
+      // A parsed falsy value is corrupt ownership evidence, not a missing lock.
+      if (owner !== undefined && !owner) {
+        if (!force) throw conflict("lock ownership is unreadable; stop all writers and use store recover --force");
+        owner = undefined;
+      }
       if (owner) {
         if (owner.host !== hostname()) throw conflict("lock belongs to another host; recovery must run on its owner host");
         if (!Number.isInteger(owner.pid) || owner.pid <= 0) throw conflict("invalid lock owner pid");
