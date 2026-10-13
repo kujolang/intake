@@ -23,7 +23,7 @@ import {
 } from "./storage.js";
 import { safetyCheck } from "./safety.js";
 import { appendSourceSyncHistory } from "./source-history.js";
-import { isoNow, uniq } from "./util.js";
+import { isoNow, uniq, sha256, stableStringify } from "./util.js";
 
 export async function syncAll(root, sourceId = null) {
   return withStoreLock(root, () => syncAllLocked(root, sourceId));
@@ -100,6 +100,28 @@ async function syncOneLocked(root, source) {
     output_refs: saved
   });
   return { source_id: source.id, saved };
+}
+
+// Receipt identity survives restarts and does not depend on the derived item index.
+export async function receiveItem(root, source, payload, normalize, eventType) {
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) throw new Error("webhook payload must be an object");
+  const receiptHash = sha256(stableStringify(payload));
+  const id = `itm_${sha256(JSON.stringify([source.id, source.type, receiptHash]))}`;
+  return withStoreLock(root, async () => {
+    const existing = await loadItem(root, id);
+    if (existing) {
+      // Complete an interrupted record/index write without rerunning classification.
+      await saveItem(root, existing);
+      await logEvent(root, "sync", { source_id: source.id, item_id: id, event_type: `${eventType}_duplicate`, status: "skipped" });
+      return existing;
+    }
+    const rules = await loadRules(root);
+    const settings = await loadSettings(root);
+    const item = await normalize(root, source, payload, { id, receiptHash });
+    const classified = await classifyItemAndSave(root, item, {}, rules, settings);
+    await logEvent(root, "sync", { source_id: source.id, item_id: id, event_type: eventType });
+    return classified.item;
+  });
 }
 
 export async function classifyAndSave(root, itemId, options = {}) {

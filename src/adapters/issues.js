@@ -1,11 +1,10 @@
-import { withStoreLock } from "../store-lock.js";
 import { createHmac } from "node:crypto";
 import { createServer } from "node:http";
 import { makeItem } from "../models.js";
 import { resolveSecretRef } from "../secrets.js";
-import { saveItem, storeRaw, logEvent } from "../storage.js";
+import { storeRaw } from "../storage.js";
 import { readStreamText, timingSafeEqualString } from "../util.js";
-import { classifyAndSave } from "../workflow.js";
+import { receiveItem } from "../workflow.js";
 import { recordRequestError, requestErrorPayload } from "../request-errors.js";
 import { readBounded, resourceLimit } from "../resource-limits.js";
 
@@ -37,10 +36,11 @@ export function testIssueConnection(source) {
   return errors.length ? { ok: false, errors } : { ok: true, checks: { config: { ok: true } } };
 }
 
-export async function normalizeIssuePayload(root, source, payload) {
+export async function normalizeIssuePayload(root, source, payload, options = {}) {
   const provider = source.type;
   const normalized = normalizeByProvider(provider, payload);
   const temp = makeItem({
+    id: options.id,
     source_id: source.id,
     source_type: provider,
     source_native_id: normalized.id,
@@ -54,6 +54,7 @@ export async function normalizeIssuePayload(root, source, payload) {
     tags: [provider, ...normalized.tags],
     received_at: normalized.received_at,
     metadata: {
+      ...(options.receiptHash ? { receipt_hash: options.receiptHash } : {}),
       issue_provider: provider,
       event_type: normalized.event_type,
       project: normalized.project,
@@ -85,13 +86,7 @@ export async function startIssueWebhookServer(root, source, options = {}) {
         return;
       }
       const payload = JSON.parse(raw);
-      const item = await withStoreLock(root, async () => {
-        const item = await normalizeIssuePayload(root, source, payload);
-        await saveItem(root, item);
-        await classifyAndSave(root, item.id);
-        await logEvent(root, "sync", { source_id: source.id, item_id: item.id, event_type: `${source.type}_webhook_received` });
-        return item;
-      });
+      const item = await receiveItem(root, source, payload, normalizeIssuePayload, `${source.type}_webhook_received`);
       res.writeHead(202, { "content-type": "application/json" });
       res.end(JSON.stringify({ ok: true, item_id: item.id }));
     } catch (error) {

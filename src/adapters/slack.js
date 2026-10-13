@@ -1,11 +1,10 @@
-import { withStoreLock } from "../store-lock.js";
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { createServer } from "node:http";
 import { makeItem } from "../models.js";
 import { resolveSecretRef } from "../secrets.js";
-import { saveItem, storeRaw, logEvent } from "../storage.js";
+import { storeRaw } from "../storage.js";
 import { readStreamText } from "../util.js";
-import { classifyAndSave } from "../workflow.js";
+import { receiveItem } from "../workflow.js";
 import { recordRequestError, requestErrorPayload } from "../request-errors.js";
 
 const MAX_SLACK_BODY_BYTES = 1024 * 1024;
@@ -27,11 +26,12 @@ export function testSlackConnection(source) {
   return errors.length ? { ok: false, errors } : { ok: true, checks: { config: { ok: true } } };
 }
 
-export async function normalizeSlackPayload(root, source, payload) {
+export async function normalizeSlackPayload(root, source, payload, options = {}) {
   const event = payload.event || payload;
   const title = slackTitle(event);
   const body = event.text || payload.text || JSON.stringify(payload, null, 2);
   const temp = makeItem({
+    id: options.id,
     source_id: source.id,
     source_type: "slack",
     source_native_id: event.client_msg_id || payload.event_id || event.event_ts || event.ts || null,
@@ -46,6 +46,7 @@ export async function normalizeSlackPayload(root, source, payload) {
     tags: ["slack"],
     received_at: slackTimestamp(event.event_ts || event.ts) || new Date().toISOString(),
     metadata: {
+      ...(options.receiptHash ? { receipt_hash: options.receiptHash } : {}),
       slack_payload: true,
       team_id: payload.team_id || payload.authorizations?.[0]?.team_id || null,
       channel: event.channel || payload.channel || null,
@@ -82,13 +83,7 @@ export async function startSlackServer(root, source, options = {}) {
         res.end(payload.challenge || "");
         return;
       }
-      const item = await withStoreLock(root, async () => {
-        const item = await normalizeSlackPayload(root, source, payload);
-        await saveItem(root, item);
-        await classifyAndSave(root, item.id);
-        await logEvent(root, "sync", { source_id: source.id, item_id: item.id, event_type: "slack_event_received" });
-        return item;
-      });
+      const item = await receiveItem(root, source, payload, normalizeSlackPayload, "slack_event_received");
       res.writeHead(202, { "content-type": "application/json" });
       res.end(JSON.stringify({ ok: true, item_id: item.id }));
     } catch (error) {
