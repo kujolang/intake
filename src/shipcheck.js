@@ -21,6 +21,7 @@ const REQUIRED_ROOT_ENTRIES = [
 ];
 
 const IGNORED_ROOT_ENTRIES = new Set([
+  ".nvmrc",
   ".DS_Store",
   ".git",
   ".intake",
@@ -143,10 +144,10 @@ function ciWorkflowCheck(workflowText) {
     workflowText ? null : "missing .github/workflows/verify.yml",
     workflowText.includes("permissions:") && workflowText.includes("contents: read") ? null : "workflow must use read-only contents permission",
     workflowText.includes("actions/checkout@v7") ? null : "workflow must use the Node 24 checkout action runtime",
-    workflowText.includes("actions/setup-node@v7") ? null : "workflow must use the Node 24 setup-node action runtime",
+    workflowText.includes("actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1") ? null : "workflow must use the Node 24 setup-node action runtime",
     workflowText.includes("npm ci") ? null : "workflow must run npm ci",
     workflowText.includes("npm run release:check") ? null : "workflow must run the complete release gate",
-    workflowText.includes("20") && workflowText.includes("22") ? null : "workflow must cover Node 20 and 22"
+    workflowText.includes("22.23.4") && workflowText.includes("24.22.1") ? null : "workflow must cover patched Node 22.23.4 and 24.22.1"
   ].filter(Boolean);
   return check("ci-workflow", failures.length === 0, failures.join("; ") || "CI workflow is wired");
 }
