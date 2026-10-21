@@ -929,6 +929,7 @@ function dashboardHtml() {
       <div class="metrics" id="metrics"></div>
       <div class="filters">
         <input id="searchBox" aria-label="Search inbox" placeholder="Search inbox (/)" autocomplete="off">
+        <select id="sourceFilter" aria-label="Filter by source"><option value="">All sources</option></select>
         <select id="riskFilter"><option value="">Any risk</option><option>low</option><option>medium</option><option>high</option><option>critical</option></select>
         <select id="statusFilter"><option value="">Any status</option><option>new</option><option>triaged</option><option>needs_review</option><option>draft_ready</option><option>resolved</option><option>blocked</option></select>
       </div>
@@ -1033,6 +1034,8 @@ function dashboardHtml() {
     }
     function itemQuery(offset = state.itemOffset) {
       const params = new URLSearchParams({ limit: String(state.itemPageSize), offset: String(offset) });
+      const source = qs("#sourceFilter").value;
+      if (source) params.set("source", source);
       const risk = qs("#riskFilter").value;
       const status = qs("#statusFilter").value;
       if (state.selectedQueue) params.set("queue", state.selectedQueue);
@@ -1088,6 +1091,12 @@ function dashboardHtml() {
     }
     function renderShell() {
       const m = state.summary.counts;
+      const selectedSource = qs("#sourceFilter").value;
+      qs("#sourceFilter").replaceChildren(
+        el("option", { value: "", text: "All sources" }),
+        ...state.sources.map(source => el("option", { value: source.id, text: source.name + (source.config?.username ? " · " + source.config.username : "") }))
+      );
+      qs("#sourceFilter").value = state.sources.some(source => source.id === selectedSource) ? selectedSource : "";
       qs("#metrics").replaceChildren(
         metric(m.active_items ?? m.items, "Inbox", "inbox", "items"),
         metric(m.later_items || 0, "Later", "clock", "later"),
@@ -1101,13 +1110,14 @@ function dashboardHtml() {
       kill.classList.toggle("on", state.summary.settings.auto_actions_enabled);
       const queues = Object.entries(state.summary.queues).filter(([q]) => q !== "resolved").sort((a, b) => b[1] - a[1]);
       qs("#queues").replaceChildren(
+        inboxButton("all", "All items", m.items),
         inboxButton("inbox", "Inbox", m.active_items ?? m.items),
         inboxButton("later", "Later", m.later_items || 0),
         inboxButton("mine", "Mine", m.mine_items || 0),
         inboxButton("unassigned", "Unassigned", m.unassigned_items || 0),
         inboxButton("done", "Done", m.archived_items || 0),
         el("div", { class: "muted", text: "Queues" }),
-        queueButton("", "All queues", state.inboxView === "done" ? m.archived_items : m.active_items),
+        queueButton("", "All queues", state.inboxView === "all" ? m.items : state.inboxView === "done" ? m.archived_items : m.active_items),
         ...queues.map(([q, n]) => queueButton(q, q, n)),
       );
     }
@@ -1130,6 +1140,11 @@ function dashboardHtml() {
     function switchInboxView(value) {
       state.selectedView = "items";
       state.inboxView = value;
+      if (value === "all") {
+        qs("#riskFilter").value = "";
+        qs("#statusFilter").value = "";
+        qs("#searchBox").value = "";
+      }
       state.selectedQueue = "";
       state.sidebarFilter = "";
       state.selectedItemId = null;
@@ -2102,6 +2117,7 @@ function dashboardHtml() {
     qs("#refreshBtn").addEventListener("click", () => refreshWithSync().catch((error) => setStatus(error.message)));
     qs("#killSwitch").addEventListener("click", async () => { await api("/api/settings/auto-actions", { method: "POST", body: JSON.stringify({ enabled: !state.summary.settings.auto_actions_enabled }) }); await load(); });
     qs("#searchBox").addEventListener("input", () => { state.sidebarFilter = ""; renderShell(); renderItems(); });
+    qs("#sourceFilter").addEventListener("change", () => { state.selectedView = "items"; state.sidebarFilter = ""; state.selectedItemId = null; state.selectedItem = null; resetItems().then(() => { renderShell(); renderCurrent(); }).catch((error) => setStatus(error.message)); });
     qs("#riskFilter").addEventListener("change", () => { state.sidebarFilter = ""; resetItems().then(() => { renderShell(); renderItems(); }).catch((error) => setStatus(error.message)); });
     qs("#statusFilter").addEventListener("change", () => { state.sidebarFilter = ""; resetItems().then(() => { renderShell(); renderItems(); }).catch((error) => setStatus(error.message)); });
     qs("#logSelect").addEventListener("change", renderLogs);

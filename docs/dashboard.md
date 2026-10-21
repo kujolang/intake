@@ -91,3 +91,7 @@ Use the native source type when Intake has one:
 - `jira`, `linear`, and `clickup` for provider-aware issue intake.
 
 Use `webhook` only for custom systems that do not have a native source type yet.
+
+## All items and source filters
+
+Choose **All items** in the sidebar to include active, snoozed and completed records. It clears queue, search, risk and status filters while retaining the selected source. Choose **All sources** or a specific mailbox in **Filter by source**. Source filtering happens before pagination; **View more** loads the next page for that source. On narrow screens, open **Inbox views** to access these controls.
