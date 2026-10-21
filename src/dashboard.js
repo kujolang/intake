@@ -795,7 +795,34 @@ function dashboardHtml() {
       --ok: #256548;
       font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
     }
-    * { box-sizing: border-box; }
+    * { box-sizing: border-box; scrollbar-width: thin; scrollbar-color: #a7bfb5 var(--soft); }
+    ::-webkit-scrollbar { width: 9px; height: 9px; }
+    ::-webkit-scrollbar-track { background: var(--soft); }
+    ::-webkit-scrollbar-thumb { background: #a7bfb5; border: 2px solid var(--soft); border-radius: 20px; }
+    ::-webkit-scrollbar-thumb:hover { background: var(--accent); }
+    select, select::picker(select) { appearance: base-select; }
+    select::picker(select) { background: var(--panel); color: var(--ink); border: 1px solid var(--line); border-radius: 10px; padding: 5px; box-shadow: 0 12px 32px #17211f24; max-height: 320px; overflow: auto; }
+    select::picker-icon { color: var(--accent); }
+    select option { padding: 9px 12px; border-radius: 6px; background: var(--panel); color: var(--ink); }
+    select option:hover, select option:focus { background: var(--soft); }
+    select option:checked { background: #e1f0e9; color: var(--accent); font-weight: 600; }
+    select option::checkmark { color: var(--accent); }
+    :focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+    .disclosure > summary { display: flex; align-items: center; justify-content: space-between; cursor: pointer; list-style: none; padding: 10px 2px; color: var(--muted); font-size: 13px; font-weight: 600; }
+    .disclosure > summary::-webkit-details-marker { display: none; }
+    .disclosure > summary::after { content: ""; width: 7px; height: 7px; border-right: 1.5px solid currentColor; border-bottom: 1.5px solid currentColor; transform: rotate(-45deg); margin-right: 5px; }
+    .disclosure[open] > summary::after { transform: rotate(45deg); }
+    .disclosure-body { display: grid; gap: 8px; padding: 2px 0 12px; }
+    .queue-disclosure { margin-top: 10px; border-top: 1px solid var(--line); }
+    .app.workspace { grid-template-columns: 240px minmax(0, 1fr); }
+    .app.workspace .sidepanel { display: none; }
+    .welcome { display: grid; align-content: center; justify-items: start; gap: 14px; min-height: 280px; padding: 28px; }
+    .welcome h2 { font-size: 25px; letter-spacing: -.6px; }
+    .welcome p { max-width: 46ch; color: var(--muted); line-height: 1.65; margin: 0; }
+    .sidepanel h2 { font-size: 17px; margin: 0 0 16px; }
+    .sidepanel .disclosure { border-top: 1px solid var(--line); }
+    .reader-meta { color: var(--muted); font-size: 13px; margin: 12px 0 22px; }
+
     body { margin: 0; color: var(--ink); background: var(--paper); }
     button, input, select, textarea { font: inherit; }
     button { border: 1px solid var(--line); background: var(--panel); color: var(--ink); border-radius: 6px; padding: 7px 10px; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; gap: 7px; }
@@ -810,7 +837,7 @@ function dashboardHtml() {
     input, select, textarea { border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px; background: #fbfdfc; color: var(--ink); min-width: 0; }
     input:focus, select:focus, textarea:focus { outline: 2px solid #bedbd3; outline-offset: 1px; border-color: var(--accent); }
     textarea { width: 100%; min-height: 122px; resize: vertical; line-height: 1.45; }
-    .app { display: grid; grid-template-columns: 260px minmax(400px, 1fr) 340px; min-height: 100vh; }
+    .app { display: grid; grid-template-columns: 240px minmax(400px, 1fr) 300px; height: 100dvh; }
     aside { border-right: 1px solid var(--line); background: linear-gradient(180deg, #eef5f1 0%, #f7faf8 100%); padding: 16px; overflow: auto; }
     main { min-width: 0; padding: 18px; overflow: auto; background: var(--paper); }
     .sidepanel { border-left: 1px solid var(--line); padding: 18px; overflow: auto; background: linear-gradient(180deg, #f3f8f5 0%, #fbfcfb 100%); }
@@ -820,24 +847,30 @@ function dashboardHtml() {
     .kill { color: var(--muted); }
     .kill.on { color: var(--danger); border-color: #e5b3bb; }
     .metrics { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin-bottom: 14px; }
-    .metric { border: 1px solid var(--line); border-radius: 7px; padding: 10px; background: white; min-height: 68px; align-items: flex-start; justify-content: flex-start; text-align: left; }
-    .metric-btn { width: 100%; display: grid; gap: 2px; }
+    .metric { border: 1px solid var(--line); border-radius: 7px; padding: 10px; background: white; min-height: 52px; align-items: flex-start; justify-content: flex-start; text-align: left; }
+    .metric-btn { width: 100%; display: grid; grid-template-columns: 1fr auto; gap: 2px; }
+    .metric-btn > .icon { display: none; }
+    .metric-btn > span { grid-column: 1 / -1; }
     .metric-btn.active { border-color: var(--accent); background: #e8f3ef; color: var(--accent); }
-    .metric b { display: block; font-size: 22px; margin-bottom: 4px; }
+    .metric b { display: block; font-size: 20px; margin-bottom: 0; }
     .metric span, .muted { color: var(--muted); font-size: 13px; }
     .filters { display: grid; gap: 8px; margin: 4px 0 14px; padding: 12px 0; border-top: 1px solid rgba(140, 160, 150, .35); border-bottom: 1px solid rgba(140, 160, 150, .35); }
     .queue-list { display: grid; gap: 6px; }
     .queue-btn { display: flex; justify-content: space-between; align-items: center; width: 100%; text-align: left; }
     .queue-btn.active { border-color: var(--accent); color: var(--accent); background: #e8f3ef; }
     .toolbar { display: flex; gap: 8px; align-items: center; justify-content: space-between; margin-bottom: 14px; }
-    .tabs { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 12px; }
+    .tabs { display: flex; gap: 3px; flex-wrap: wrap; margin-bottom: 0; }
+    .tab { font-size: 13px; padding: 8px 10px; }
+    .tab:not(.active) { background: transparent; border-color: transparent; color: var(--muted); }
+    .tab:not(.active):hover { background: var(--soft); color: var(--ink); }
     .mobile-menu { display: none; }
     .tab { background: #ffffff; }
     .tab.active { background: var(--ink); color: white; border-color: var(--ink); }
     .split { display: grid; grid-template-columns: minmax(280px, 38%) minmax(320px, 1fr); gap: 12px; min-height: 70vh; }
     .list { border: 1px solid var(--line); border-radius: 8px; overflow: hidden; background: white; }
     .bulkbar { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 10px; border-bottom: 1px solid var(--line); background: #f8fbfa; overflow-x: auto; }
-    .bulkbar .controls { margin: 0; flex-wrap: nowrap; }
+    .bulkbar .controls { margin: 0; flex-wrap: wrap; }
+    .bulkbar { flex-wrap: wrap; overflow: visible; }
     .bulkbar button { white-space: nowrap; flex: 0 0 auto; }
     .list-footer { display: grid; gap: 6px; place-items: center; padding: 12px; background: #fbfdfc; }
     .item-row-wrap { display: grid; grid-template-columns: 34px minmax(0, 1fr); align-items: stretch; border-bottom: 1px solid var(--line); background: white; }
@@ -855,6 +888,7 @@ function dashboardHtml() {
     .detail h2, .surface h2 { margin: 0 0 8px; font-size: 19px; overflow-wrap: anywhere; }
     .grid2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin: 10px 0; }
     .field { border-top: 1px solid var(--line); padding-top: 10px; margin-top: 10px; }
+    .bodytext { font-family: inherit !important; font-size: 14px !important; line-height: 1.7 !important; }
     .bodytext, pre { white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.45; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 13px; }
     .controls { display: flex; gap: 8px; flex-wrap: wrap; margin: 12px 0; }
     .quick-actions { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 6px; margin: 8px 0 12px; }
@@ -930,8 +964,8 @@ function dashboardHtml() {
       <div class="filters">
         <input id="searchBox" aria-label="Search inbox" placeholder="Search inbox (/)" autocomplete="off">
         <select id="sourceFilter" aria-label="Filter by source"><option value="">All sources</option></select>
-        <select id="riskFilter"><option value="">Any risk</option><option>low</option><option>medium</option><option>high</option><option>critical</option></select>
-        <select id="statusFilter"><option value="">Any status</option><option>new</option><option>triaged</option><option>needs_review</option><option>draft_ready</option><option>resolved</option><option>blocked</option></select>
+        <details class="disclosure"><summary>More filters</summary><div class="disclosure-body"><select id="riskFilter" aria-label="Risk"><option value="">Any risk</option><option>low</option><option>medium</option><option>high</option><option>critical</option></select>
+        <select id="statusFilter" aria-label="Status"><option value="">Any status</option><option>new</option><option>triaged</option><option>needs_review</option><option>draft_ready</option><option>resolved</option><option>blocked</option></select></div></details>
       </div>
       <div class="queue-list" id="queues"></div>
     </aside>
@@ -987,7 +1021,7 @@ function dashboardHtml() {
       history.replaceState(null, "", launchUrl.pathname + launchUrl.search + launchUrl.hash);
     }
     let token = sessionStorage.getItem("intakeToken") || "";
-    const state = { items: [], itemOffset: 0, itemPageSize: 20, itemsHasMore: false, itemsLoading: false, sources: [], summary: null, inboxView: "inbox", selectedQueue: "", sidebarFilter: "", selectedItemIds: new Set(), selectedItemId: null, selectedSourceId: "", selectedRuleId: "", selectedItem: null, selectedView: "items", sourceDiagnostics: {}, pendingSourceAction: "", policyPreview: null, setupProfile: "email", shortcutPrefix: "", approvalAuditFilters: { operator: "", action_type: "", source_id: "", status: "", date_from: "", date_to: "" } };
+    const state = { items: [], itemOffset: 0, itemPageSize: 20, itemsHasMore: false, itemsLoading: false, sources: [], summary: null, inboxView: "inbox", selectedQueue: "", sidebarFilter: "", selectedItemIds: new Set(), selectedItemId: null, selectedSourceId: "", selectedRuleId: "", selectedItem: null, selectedView: "items", sourceDiagnostics: {}, pendingSourceAction: "", policyPreview: null, setupProfile: "email", queuesOpen: false, shortcutPrefix: "", approvalAuditFilters: { operator: "", action_type: "", source_id: "", status: "", date_from: "", date_to: "" } };
     const qs = (s) => document.querySelector(s);
     const el = (tag, attrs = {}, children = []) => {
       const node = document.createElement(tag);
@@ -1116,10 +1150,20 @@ function dashboardHtml() {
         inboxButton("mine", "Mine", m.mine_items || 0),
         inboxButton("unassigned", "Unassigned", m.unassigned_items || 0),
         inboxButton("done", "Done", m.archived_items || 0),
-        el("div", { class: "muted", text: "Queues" }),
-        queueButton("", "All queues", state.inboxView === "all" ? m.items : state.inboxView === "done" ? m.archived_items : m.active_items),
-        ...queues.map(([q, n]) => queueButton(q, q, n)),
+        queueDisclosure(queues, m),
       );
+    }
+    function queueDisclosure(queues, counts) {
+      const details = el("details", { class: "disclosure queue-disclosure", id: "queueDisclosure" }, [
+        el("summary", { text: "Queues" }),
+        el("div", { class: "disclosure-body" }, [
+          queueButton("", "All queues", state.inboxView === "all" ? counts.items : state.inboxView === "done" ? counts.archived_items : counts.active_items),
+          ...queues.map(([q, n]) => queueButton(q, q, n))
+        ])
+      ]);
+      details.open = state.queuesOpen;
+      details.addEventListener("toggle", () => { if (details.isConnected) state.queuesOpen = details.open; });
+      return details;
     }
     function metric(value, label, iconName, mode) {
       return el("button", { class: "metric metric-btn" + (state.sidebarFilter === mode ? " active" : ""), onclick: () => metricClick(mode) }, [icon(iconName), el("b", { text: value }), el("span", { text: label })]);
@@ -1169,6 +1213,7 @@ function dashboardHtml() {
       );
     }
     function renderCurrent() {
+      qs(".app").classList.toggle("workspace", state.selectedView !== "items");
       for (const view of ["items", "sources", "actions", "learnings", "rules", "logs", "settings"]) qs("#" + view + "View").classList.toggle("hidden", state.selectedView !== view);
       document.querySelectorAll(".tab").forEach((tab) => { const active = tab.dataset.view === state.selectedView; tab.classList.toggle("active", active); tab.setAttribute("aria-current", active ? "page" : "false"); });
       if (state.selectedView === "items") renderItems();
@@ -1187,15 +1232,26 @@ function dashboardHtml() {
           el("div", { class: "muted", text: state.itemsHasMore ? "No loaded items match this view yet. Load more to continue scanning." : (state.sources.length ? "Sync a source or create a manual item." : "Add an email, file, webhook, or manual source.") }),
           el("div", { class: "controls" }, state.itemsHasMore ? [button("View more", () => loadMoreItems({ render: true, scroll: true }), "primary", state.itemsLoading, "list")] : [button("Sources", () => { state.selectedView = "sources"; renderCurrent(); }, "", false, "plug-connected")])
         ]), listFooter(rows));
-        qs("#itemDetail").replaceChildren(el("div", { class: "empty-state" }, [
-          el("b", { text: "Nothing selected" }),
-          el("div", { class: "muted", text: "Items will appear here after a source sync or manual intake." })
+        qs("#itemDetail").replaceChildren(el("div", { class: "welcome" }, [
+          el("h2", { text: "A clearer inbox starts here" }),
+          el("p", { text: "Choose All items to browse your mail, or narrow the list to one source. Select a message to read and respond." })
         ]));
-        qs("#workSurface").replaceChildren();
+        renderInboxOverview();
         return;
       }
       qs("#itemList").replaceChildren(bulkBar(rows), ...rows.map((item) => itemRow(item)), listFooter(rows));
       if (!state.selectedItemId && rows[0]) selectItem(rows[0].id);
+    }
+    function renderInboxOverview() {
+      qs(".sidepanel h2").textContent = "Inbox overview";
+      qs("#workSurface").replaceChildren(
+        el("div", { class: "settings-note", text: "Select a message to draft a reply, assign it or mark it done." }),
+        ...state.sources.map(source => el("div", { class: "source-row" }, [
+          el("b", { text: source.name }),
+          el("div", { class: "muted", text: source.last_sync_result?.ok ? "Last sync successful" : "Check source readiness" })
+        ])),
+        button("Manage sources", () => { state.selectedView = "sources"; renderCurrent(); }, "", false, "plug-connected")
+      );
     }
     function bulkBar(rows) {
       const visibleIds = rows.map((item) => item.id);
@@ -1206,8 +1262,8 @@ function dashboardHtml() {
         el("div", { class: "controls" }, [
           button("All", () => { for (const id of visibleIds) state.selectedItemIds.add(id); renderItems(); }, "", rows.length === 0, "list", [], "Select all loaded"),
           button("10", () => { for (const id of visibleIds.slice(0, 10)) state.selectedItemIds.add(id); renderItems(); }, "", rows.length === 0, "list", [], "Select first 10 loaded"),
-          button("Clear", () => { state.selectedItemIds.clear(); renderItems(); }, "", selectedTotal === 0, "x"),
-          button("Resolve", () => bulkResolveSelected(), "primary", selectedTotal === 0, "check", [], "Resolve selected")
+          selectedTotal ? button("Clear", () => { state.selectedItemIds.clear(); renderItems(); }, "", false, "x") : "",
+          selectedTotal ? button("Resolve", () => bulkResolveSelected(), "primary", false, "check", [], "Resolve selected") : ""
         ])
       ]);
     }
@@ -1258,17 +1314,18 @@ function dashboardHtml() {
       qs("#itemDetail").replaceChildren(
         el("h2", { text: item.title }),
         el("div", { class: "rowmeta" }, [pill(item.queue), pill(item.status), pill(item.assigned_human || item.assigned_agent || "Unassigned"), isCurrentlySnoozed(item) ? pill("Later until " + formatDateTime(item.snoozed_until)) : pill(item.risk_level, item.risk_level)]),
-        el("div", { class: "grid2" }, [
-          info("Author", item.author_email || item.author || "unknown"),
-          info("Received", item.received_at || "unknown"),
-          info("Category", item.category || "none"),
-          info("Intent", item.intent || "none")
-        ]),
-        el("div", { class: "field" }, [el("b", { text: "Normalized" }), el("div", { class: "bodytext", text: item.normalized_text || item.body || "" })]),
-        el("div", { class: "field" }, [el("b", { text: "AI Summary" }), el("div", { class: "bodytext", text: item.ai_summary || "none" })]),
-        ruleMatchSection(item),
-        attachmentSection(item),
-        el("div", { class: "field" }, [el("b", { text: "Tags" }), el("div", { class: "rowmeta" }, (item.tags || []).map((t) => pill(t)))])
+        el("div", { class: "reader-meta", text: (item.author_email || item.author || "Unknown sender") + " · " + formatDateTime(item.received_at) }),
+        el("div", { class: "bodytext", text: item.normalized_text || item.body || "" }),
+        item.ai_summary ? el("div", { class: "field" }, [el("b", { text: "Summary" }), el("p", { text: item.ai_summary })]) : "",
+        item.attachments?.length ? attachmentSection(item) : "",
+        el("details", { class: "disclosure field" }, [
+          el("summary", { text: "Message details & classification" }),
+          el("div", { class: "disclosure-body" }, [
+            el("div", { class: "grid2" }, [info("Category", item.category || "none"), info("Intent", item.intent || "none")]),
+            ruleMatchSection(item),
+            el("div", { class: "rowmeta" }, (item.tags || []).map(t => pill(t)))
+          ])
+        ])
       );
       renderWorkSurface(item);
     }
@@ -1312,7 +1369,8 @@ function dashboardHtml() {
       ]);
     }
     function renderWorkSurface(item) {
-      const draft = el("textarea", { id: "draftBody", placeholder: "Edit a draft before creating an action" });
+      qs(".sidepanel h2").textContent = "Reply & actions";
+      const draft = el("textarea", { id: "draftBody", "aria-label": "Reply draft", placeholder: "Write a reply draft…" });
       const tagInput = el("input", { id: "tagInput", placeholder: "Add tag, e.g. docs-needed" });
       const queueInput = el("input", { id: "queueInput", placeholder: "Move to queue", value: item.queue });
       qs("#workSurface").replaceChildren(
@@ -1335,6 +1393,9 @@ function dashboardHtml() {
           ])
         ]),
         draft,
+        el("details", { class: "disclosure" }, [
+          el("summary", { text: "Organize & inspect" }),
+          el("div", { class: "disclosure-body" }, [
         el("div", { class: "work-field" }, [
           el("label", { text: "Move item to queue" }),
           el("div", { class: "formrow" }, [queueInput, button("Move", () => itemPost(item.id, "queue", { queue: queueInput.value }), "", false, "folder")])
@@ -1347,6 +1408,8 @@ function dashboardHtml() {
           const raw = await api("/api/items/" + encodeURIComponent(item.id) + "/raw");
           qs("#workSurface").append(el("pre", { text: raw.raw || "" }));
         }, "", false, "file-text")
+          ])
+        ])
       );
     }
     function openSnoozeMenu(itemId) {

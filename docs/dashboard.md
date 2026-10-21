@@ -95,3 +95,9 @@ Use `webhook` only for custom systems that do not have a native source type yet.
 ## All items and source filters
 
 Choose **All items** in the sidebar to include active, snoozed and completed records. It clears queue, search, risk and status filters while retaining the selected source. Choose **All sources** or a specific mailbox in **Filter by source**. Source filtering happens before pagination; **View more** loads the next page for that source. On narrow screens, open **Inbox views** to access these controls.
+
+## Focused workspace
+
+Scrollbars and select pickers use the green/neutral theme. Expanded select pickers use the native customizable-select API (`appearance: base-select`) on supporting browsers, preserving keyboard selection and labels; older browsers retain their native picker fallback.
+
+Queues starts collapsed with a chevron; its open state survives dashboard rerenders within the current page. More filters, message classification details and Organize & inspect controls are collapsed until needed. Bulk resolve controls appear after selecting messages. Non-inbox views use the full content width instead of reserving an unused reply column. An empty inbox shows orientation and source status in the right panel. Message bodies use readable proportional text; raw payloads retain monospace formatting.
