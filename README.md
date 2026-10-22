@@ -1,12 +1,12 @@
 # Kujo Intake
 
-[![Version](https://img.shields.io/badge/version-0.2.0-black)](https://github.com/kujolang/intake/releases/tag/v0.2.0)
+[![Version](https://img.shields.io/badge/version-0.3.0-black)](https://github.com/kujolang/intake/releases/tag/v0.3.0)
 [![License](https://img.shields.io/badge/license-MIT-lightgrey)](LICENSE)
 [![built with Kujo](https://img.shields.io/badge/built%20with-Kujo-white.svg)](https://github.com/kujolang/kujo)
 
 Kujo Intake collects email, webhooks, file drops, and manual input into a local work queue. It keeps the original payload, applies routing rules, and checks policy before running an action. Operators can review drafts, approve actions, and export learnings to Strata or TotalRecall-compatible files.
 
-Version **0.2.0** is the first tagged GitHub release. It runs on Node.js 20.19 or newer and stores state in local files. Read the [release notes](docs/releases/0.2.0.md) before upgrading an existing checkout.
+Version **0.3.0** is a GitHub source release. It runs on Node.js 22.23.4+, 24.22.1+, or 26.12.1+ (supported release lines) and stores state in local files. Read the [release notes](docs/releases/0.3.0.md) before upgrading an existing checkout.
 
 ## What It Does
 
@@ -33,14 +33,14 @@ This release is distributed through GitHub. The npm package remains private, and
 ## Install
 
 ```sh
-git clone --branch v0.2.0 https://github.com/kujolang/intake.git
+git clone --branch v0.3.0 https://github.com/kujolang/intake.git
 cd intake
 npm ci
 npm link
 intake init
 ```
 
-Requires Node.js 20.19.0 or newer.
+Requires Node.js 22.23.4+, 24.22.1+, or 26.12.1+ (supported release lines).
 
 Without `npm link`, run commands through Node:
 

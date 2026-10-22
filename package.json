@@ -1,6 +1,6 @@
 {
   "name": "kujo-intake",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Local-first source-agnostic business intake for the Kujo ecosystem.",
   "type": "module",
   "private": true,
@@ -33,9 +33,9 @@
   "bin": {
     "intake": "bin/intake.js"
   },
-    "engines": {
-        "node": ">=22.23.4 <23 || >=24.22.1 <25 || >=26.12.1"
-    },
+  "engines": {
+    "node": ">=22.23.4 <23 || >=24.22.1 <25 || >=26.12.1"
+  },
   "scripts": {
     "test": "node --test tests/*.test.js",
     "smoke": "node tests/smoke.mjs",

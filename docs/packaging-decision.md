@@ -1,8 +1,8 @@
 # Distribution and release gates
 
-Intake 0.2.0 is a public GitHub source release for local operators. Its npm manifest keeps `private: true` to prevent accidental registry publication. That flag does not make the GitHub repository private.
+Intake 0.3.0 is a public GitHub source release for local operators. Its npm manifest keeps `private: true` to prevent accidental registry publication. That flag does not make the GitHub repository private.
 
-Install from the tagged checkout with Node.js 20.19 or newer, `npm ci`, and `npm link`. The release also supplies a tracked-file package archive and checksum. Intake has no Kennel manifest or native Kujo entrypoint and is not enrolled in the Kennel registry.
+Install from the tagged checkout with Node.js 22.23.4+, 24.22.1+, or 26.12.1+ (supported release lines), `npm ci`, and `npm link`. The release also supplies a tracked-file package archive and checksum. Intake has no Kennel manifest or native Kujo entrypoint and is not enrolled in the Kennel registry.
 
 ## GitHub source release
 
@@ -10,7 +10,7 @@ Before tagging:
 
 - Align package, lockfile, CLI, README, changelog, and release notes.
 - Pass `npm run release:check` and Chromium verification.
-- Confirm the intended commit passes the Node 20.19/22/24 CI matrix.
+- Confirm the intended commit passes the patched Node 22/24/26 CI matrix.
 - Run `node scripts/check-package.mjs`; package only tracked, reviewed files.
 - Record limitations and publish the tag, archive, and checksum together.
 

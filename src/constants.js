@@ -1,4 +1,4 @@
-export const VERSION = "0.2.0";
+export const VERSION = "0.3.0";
 export const DEFAULT_INTAKE_DIR = ".intake";
 export const STORAGE_SCHEMA_VERSION = 1;
 

@@ -8,6 +8,12 @@ This project follows a lightweight semantic versioning policy:
 - Minor: new adapters, CLI commands, dashboard features, and backwards-compatible storage additions.
 - Major: storage schema changes that require migration, command contract breaks, or policy behavior changes that can affect operator safety.
 
+## 0.3.0 — 2026-10-22
+
+- Added the all-items inbox view and mailbox source filtering.
+- Refined the dashboard theme and progressively disclosed secondary controls.
+- Required patched Node.js release lines and expanded CI to Node 26.
+
 ## 0.2.0 — 2026-10-13
 
 First tagged GitHub release. Distributed as Node.js source; not published to npm or Kennel.
