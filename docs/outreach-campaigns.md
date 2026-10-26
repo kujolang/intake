@@ -163,6 +163,14 @@ plain email subjects; campaign identification stays in metadata and tags.
 
 ## Explicitly approved delivery
 
+An optional private `.intake/outreach-limits.json` config enforces account-wide
+limits for reviewed-manifest and dashboard campaign sends. Set positive integer
+`daily_limit` and `batch_limit`, and an IANA `timezone`. The guard runs inside the
+shared delivery locks, counts previous campaigns and uncertain submissions, and
+rejects a whole batch before SMTP when capacity is unavailable. Local midnight
+resets the daily window. Missing config preserves legacy behavior; invalid config
+blocks sending. Scheduling and research remain separate from this delivery guard.
+
 An operator can now authorize a bounded set of already reviewed, eligible remote
 campaign drafts with `scripts/send-reviewed-outreach.mjs`. This is separate from
 draft approval and the dashboard editor. General campaign sends remain blocked.

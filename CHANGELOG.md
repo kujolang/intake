@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Enforce optional account-wide daily and batch outreach limits under shared delivery locks, including prior campaigns and uncertain sends, for both manifest and dashboard delivery.
+
 - Support subsequent five-prospect outreach batches with cross-batch copy review and separate resumable receipts. Use natural email subjects as Intake titles without campaign prefixes.
 
 - Require versioned Ashford outreach copy review, sourced claims, 34/40 quality scores and campaign-wide distinctiveness checks before draft persistence.

@@ -30,6 +30,13 @@ test('explicit delivery preserves draft IDs, records separate send action and co
  await sendApprovedOutreach(root,manifest,deps);assert.equal(calls,1);
  await assert.rejects(sendApprovedOutreach(root,{...manifest,approved_at:'different'},deps),/previously submitted/);
 });
+test('account limit blocks submission before history or SMTP and survives another campaign', async t => {
+ const {root,manifest,deps}=await fixture(t);
+ await writeJsonAtomic(join(root,'outreach-limits.json'),{daily_limit:1,batch_limit:1,timezone:'UTC'});
+ await saveAction(root,{id:'prior_send',source_id:'mail',type:'send_response',status:'execution_uncertain',approved_at:new Date().toISOString(),metadata:{outreach:{campaign_id:'OTHER'}}});
+ deps.deliver=async()=>assert.fail('must not submit');
+ await assert.rejects(sendApprovedOutreach(root,manifest,deps),/daily limit/);
+});
 for(const failure of ['changed','correspondence','suppressed','uncertain'])test(`send fails closed: ${failure}`,async t=>{
  const {root,manifest,deps,a}=await fixture(t);let calls=0;
  deps.deliver=async(s,a,i,f,record)=>{calls++;await record({status:'smtp_returned',smtp:{accepted:[i.author_email]}});throw Error('cleanup uncertain');};

@@ -4,6 +4,7 @@ import { withActionLock } from './action-lock.js';
 import { loadSources, loadAction, loadItem, listActions, saveAction, saveItem, logEvent } from './storage.js';
 import { readJson, writeJsonAtomic, sha256, stableStringify, assertSafeId } from './util.js';
 import { requireCampaignCopy } from './outreach-copy.js';
+import { checkOutreachLimits } from './outreach-limits.js';
 import { inspectEmailHistory, verifyEmailDraft, deliverApprovedOutreach, outreachDeliveryFingerprint } from './adapters/email.js';
 
 // An explicit operator authorization overrides draft-only policy for these exact
@@ -23,6 +24,7 @@ export async function sendApprovedOutreach(root, manifest, dependencies = {}) {
     const suppressions = await readJson(join(root, 'outreach-suppressions.json'), []);
     if (!Array.isArray(suppressions) || suppressions.some(s => typeof s?.identity !== 'string')) throw new Error('invalid suppressions');
     const actions = await listActions(root);
+    checkOutreachLimits(await readJson(join(root, 'outreach-limits.json'), null), actions, source.id, manifest.entries.length);
     const plans = [];
     for (const entry of manifest.entries) {
       assertSafeId(entry.action_id);

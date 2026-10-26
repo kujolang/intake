@@ -7,6 +7,7 @@ import { assertSafeId, readJson, writeJsonAtomic, sha256, stableStringify } from
 import { campaignMessageHash } from './campaign-message.js';
 import { sendEmailResponse } from './adapters/email.js';
 import { evaluatePolicy } from './policy.js';
+import { checkOutreachLimits } from './outreach-limits.js';
 
 const fail = (status, message) => { throw Object.assign(new Error(message), { statusCode: status }); };
 const version = action => sha256(stableStringify(action));
@@ -81,6 +82,7 @@ export async function editCampaignMail(root, command, id, body) {
       c.record.approval_status = 'APPROVED';
     } else if (command === 'send') {
       if (body.confirm !== true) fail(400, 'Confirm the recipient and approved message before sending');
+      checkOutreachLimits(await readJson(join(root, 'outreach-limits.json'), null), await listActions(root), c.source.id, 1);
       await checkDeliveryEligibility(root, action, item, c);
       const hash = campaignMessageHash(c.source, action, item);
       if (action.metadata?.revision_proposal || action.metadata?.campaign_review?.status !== 'approved' || action.metadata.campaign_review.content_hash !== hash) fail(400, 'Approve this exact saved message before sending');
