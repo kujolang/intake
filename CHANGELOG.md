@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Support subsequent five-prospect outreach batches with cross-batch copy review and separate resumable receipts. Use natural email subjects as Intake titles without campaign prefixes.
+
 - Require versioned Ashford outreach copy review, sourced claims, 34/40 quality scores and campaign-wide distinctiveness checks before draft persistence.
 - Revise existing campaign records with verified IMAP replacement, recoverable prior versions and fail-closed recovery journals; prevent dashboard edits from bypassing outreach review.
 
