@@ -2,7 +2,7 @@ import { readdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { withStoreLock } from './store-lock.js';
 import { withActionLock } from './action-lock.js';
-import { validateCampaign } from './outreach.js';
+import { validateCampaign, campaignBase } from './outreach.js';
 import { requireCampaignCopy } from './outreach-copy.js';
 import { loadAction, loadItem, loadSources, loadPolicies, loadSettings, saveAction, saveItem, logEvent } from './storage.js';
 import { makeItem } from './models.js';
@@ -11,10 +11,10 @@ import { inspectEmailHistory, replaceEmailDraft } from './adapters/email.js';
 import { readJson, writeJsonAtomic, sha256, stableStringify } from './util.js';
 
 export async function reviseCampaign(root, campaign, dependencies={}) {
-  validateCampaign(campaign);requireCampaignCopy(campaign.prospects);
+  validateCampaign(campaign);requireCampaignCopy([...(campaign.review_context || []),...campaign.prospects]);
   const fingerprint=sha256(stableStringify(campaign));
   return withStoreLock(root,()=>withActionLock(root,async()=>{
-    const base=join(root,'campaigns',campaign.id), state=await readJson(join(base,'state.json'));
+    const base=await campaignBase(root,campaign), state=await readJson(join(base,'state.json'));
     if(!state?.prospects) throw new Error('existing campaign required');
     const journalPath=join(base,`revision-${fingerprint}.json`);
     const journal=await readJson(journalPath,null);
@@ -55,7 +55,7 @@ export async function reviseCampaign(root, campaign, dependencies={}) {
         j.remote_receipts ||= {};j.remote_receipts[p.canonical_id]=next.result;
         await writeJsonAtomic(journalPath,j);
       }
-      const nextItem=makeItem({...item,title:`${campaign.id} — ${p.name}: ${p.subject}`,body:p.body,normalized_text:undefined,metadata:next.metadata,updated_at:new Date().toISOString()});
+      const nextItem=makeItem({...item,title:p.subject,body:p.body,normalized_text:undefined,metadata:next.metadata,updated_at:new Date().toISOString()});
       await saveItem(root,nextItem);await saveAction(root,next);
       if (old.status==='executed') record.revision_receipts=[...(record.revision_receipts||[]),next.result];
       record.receipt=next.result;record.status=old.status==='executed'?'DRAFTED':(p.email?'NEEDS_VERIFICATION':'NEEDS_CONTACT_ROUTE');record.copy_revision=campaign.copy_revision;record.approval_status='AWAITING_REVIEW';

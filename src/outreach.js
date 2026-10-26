@@ -1,4 +1,5 @@
-import { requireCampaignCopy } from './outreach-copy.js';
+import { readdir } from 'node:fs/promises';
+import { copyHash, requireCampaignCopy } from './outreach-copy.js';
 // Draft-only campaign support. Live sending is deliberately unavailable.
 import { join } from 'node:path';
 import { withStoreLock } from './store-lock.js';
@@ -52,6 +53,7 @@ export function normalizeCollection(records, collection, merges = []) {
 
 export function validateCampaign(c) {
   assertSafeId(c.id, 'campaign ID');
+  if(c.batch_id !== undefined) assertSafeId(c.batch_id, 'batch ID');
   if (c.mode !== 'DRAFT' || c.sending_authorized !== false) throw new Error('only DRAFT campaigns with sending_authorized=false are supported');
   if (!c.source_id || !c.sender_email || !Array.isArray(c.prospects) || c.prospects.length > 5) throw new Error('campaign source, sender, and at most five prospects required');
   if (new Set(c.prospects.map(p => p.canonical_id)).size !== c.prospects.length) throw new Error('duplicate campaign identity');
@@ -67,19 +69,20 @@ export function validateCampaign(c) {
 
 export async function draftCampaign(root, campaign, dependencies = {}) {
   validateCampaign(campaign);
-  requireCampaignCopy(campaign.prospects);
+  requireCampaignCopy([...(campaign.review_context || []), ...campaign.prospects]);
   return withStoreLock(root, async () => {
+    const base=await campaignBase(root,campaign);
     const sources = await loadSources(root);
     const source = sources.find(s => s.id === campaign.source_id);
     if (!source?.enabled || source.type !== 'email' || source.config?.username?.toLowerCase() !== campaign.sender_email.toLowerCase()) throw new Error('campaign sender does not match enabled Intake mailbox');
     const suppressions = await readJson(join(root, 'outreach-suppressions.json'), []);
     if (!Array.isArray(suppressions) || suppressions.some(s => !s || typeof s.identity !== 'string')) throw new Error('invalid account suppression records');
-    const path = join(root, 'campaigns', campaign.id, 'state.json');
-    const state = await readJson(path, { id: campaign.id, mode: 'DRAFT', sending_authorized: false, prospects: {}, events: [] });
+    const path = join(base, 'state.json');
+    const state = await readJson(path, { id: campaign.id, batch_id: campaign.batch_id || null, mode: 'DRAFT', sending_authorized: false, prospects: {}, events: [] });
     const fingerprint = sha256(stableStringify(campaign));
     if (state.config_hash && state.config_hash !== fingerprint) throw new Error('campaign changed; review existing drafts before replacing configuration');
     state.config_hash = fingerprint;
-    await writeJsonAtomic(join(root, 'campaigns', campaign.id, 'campaign.json'), campaign);
+    await writeJsonAtomic(join(base, 'campaign.json'), campaign);
     const history = dependencies.history || inspectEmailHistory;
     const execute = dependencies.execute || (async id => {
       await approveAction(root, id, 'user-authorized-draft-persistence-only');
@@ -111,8 +114,8 @@ export async function draftCampaign(root, campaign, dependencies = {}) {
       if (!p.eligible) holds.push('Prospect not eligible for remote draft');
       if (!p.email || p.contact_status !== 'VERIFIED') holds.push('NEEDS_CONTACT_ROUTE');
       const status = holds.length ? (suppressed ? 'DO_NOT_CONTACT' : !p.email ? 'NEEDS_CONTACT_ROUTE' : 'NEEDS_VERIFICATION') : 'AWAITING_APPROVAL';
-      const metadata = { outreach: { campaign_id: campaign.id, canonical_id: p.canonical_id, original_ids: p.original_ids, mode: 'DRAFT', send_blocked: true, content_hash: sha256(stableStringify(p)), holds, sources: p.sources, qa: p.qa, copy_review: p.copy_review }, subject: p.subject, draft_message_id: `<ashford-${key}@${campaign.sender_email.split('@')[1]}>` };
-      await saveItem(root, makeItem({ id: itemId, source_id: source.id, source_type: 'email', title: `${campaign.id}: ${p.name}`, body: p.body, author: p.name, author_email: p.email || null, queue: 'sales', category: `outreach:${campaign.id}`, status: 'needs_review', tags: ['outreach', campaign.id], metadata }));
+      const metadata = { outreach: { campaign_id: campaign.id, batch_id: campaign.batch_id || null, canonical_id: p.canonical_id, original_ids: p.original_ids, mode: 'DRAFT', send_blocked: true, content_hash: sha256(stableStringify(p)), holds, sources: p.sources, qa: p.qa, copy_review: p.copy_review }, subject: p.subject, draft_message_id: `<ashford-${key}@${campaign.sender_email.split('@')[1]}>` };
+      await saveItem(root, makeItem({ id: itemId, source_id: source.id, source_type: 'email', title: p.subject, body: p.body, author: p.name, author_email: p.email || null, queue: 'sales', category: `outreach:${campaign.id}`, status: 'needs_review', tags: ['outreach', campaign.id], metadata }));
       await saveAction(root, makeAction({ id: actionId, intake_item_id: itemId, source_id: source.id, type: 'draft_response', status: 'needs_review', body: p.body, metadata }));
       state.prospects[p.canonical_id] = { status, item_id: itemId, action_id: actionId, holds, history: { ...checked, local_item_count: local.length, local_action_count: localActions.length }, receipt: null };
       state.events.push({ at: new Date().toISOString(), prospect_id: p.canonical_id, event: 'review_proposal_saved', action_id: actionId });
@@ -134,4 +137,28 @@ export async function draftCampaign(root, campaign, dependencies = {}) {
     await writeJsonAtomic(path, state);
     return state;
   });
+}
+
+export async function campaignBase(root, campaign) {
+  const parent = join(root, 'campaigns', campaign.id);
+  const base = campaign.batch_id ? join(parent, 'batches', campaign.batch_id) : parent;
+  const prior = [];
+  if (campaign.batch_id) {
+    const first = await readJson(join(parent, 'campaign.json'), null);
+    if (!first || first.source_id !== campaign.source_id || first.sender_email !== campaign.sender_email) throw new Error('batch requires the existing campaign sender');
+    prior.push(...first.prospects);
+  }
+  const batches = await readdir(join(parent, 'batches')).catch(error => {
+    if (error.code === 'ENOENT') return [];
+    throw error;
+  });
+  for (const name of batches) {
+    if (name === campaign.batch_id) continue;
+    const saved = await readJson(join(parent, 'batches', name, 'campaign.json'), null);
+    if (saved) prior.push(...saved.prospects);
+  }
+  const context = campaign.review_context || [];
+  if (context.length !== prior.length || prior.some(p => !context.some(q => q.canonical_id === p.canonical_id && copyHash(q) === copyHash(p)))) throw new Error('batch must compare all previously saved campaign copy unchanged');
+  if (campaign.prospects.some(p => prior.some(q => q.canonical_id === p.canonical_id))) throw new Error('batch must contain new campaign prospects');
+  return base;
 }

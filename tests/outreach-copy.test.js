@@ -25,3 +25,4 @@ test('requires explicit batch structure review and invalidates it after a batch 
  const p=prospect();p.copy_review.structure_reviewed=false;assert.equal(checkCampaignCopy([p]).passed,false);
  p.copy_review.structure_reviewed=true;p.canonical_id='CHANGED';assert.equal(checkCampaignCopy([p]).passed,false);
 });
+test('rejects internal campaign labels in subjects',()=>{const p=prospect();p.subject='ASH-FIT-001 — Specific Gym: First visit';sign([p]);assert.match(checkCopy(p).failures.join(';'),/campaign identifiers/);});

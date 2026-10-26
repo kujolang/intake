@@ -104,3 +104,10 @@ history; editing copy does not authorize sending or cure a missing contact.
 The initiating authority is Robert's October 26, 2026 “Outreach Copy Upgrade”
 instructions and five rewritten Campaign 001 examples. Store actual prospect
 research and drafts privately in `.intake/`, not in this public policy.
+
+## Subject and Intake title clarification (October 26, 2026)
+
+Use the natural email subject as the Intake item title, too. Never prefix either
+with a campaign ID, batch ID, business-name label or internal tracking text.
+Keep campaign identity in tags and metadata. Robert explicitly rejected titles
+such as “ASH-FIT-001 — Business: Question about your website.”

@@ -14,6 +14,7 @@ export function checkCopy(p) {
   if (count < 75 || count > 130) failures.push('Copy must be 75–130 words, excluding signature/footer');
   if ((p.copy.match(/\?/g)||[]).length !== 1) failures.push('Use one closing question');
   if (!p.copy.trim().endsWith('?')) failures.push('Close with the opportunity-specific question');
+  if (/\bASH-[A-Z]+-\d+\b/i.test(p.subject || '')) failures.push('Keep campaign identifiers out of email subjects');
   if (!p.subject || p.subject.length > 85 || /[\r\n!]/.test(p.subject)) failures.push('Use a short, natural subject');
   if (/\p{Extended_Pictographic}/u.test(p.copy)) failures.push('No emojis');
   const text = p.copy.replace(/[’‘]/g, "'");

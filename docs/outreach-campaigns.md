@@ -147,3 +147,15 @@ a pending journal to force an automatic retry. A network interruption can leave
 two versions temporarily; inspect Message-IDs before restoring a single active
 draft. The archive UID is retained for later history checks where the server
 provides it; missing archive identity requires manual reconciliation.
+
+## Subsequent five-prospect batches
+
+Keep the same campaign `id` and specify a new safe `batch_id`, such as `BATCH-002`.
+The `draft` command stores that batch under `campaigns/ID/batches/BATCH_ID/`,
+leaving earlier draft receipts and configurations intact. Each batch has at most
+five new prospects. Supply `review_context` containing every earlier prospect's
+unchanged copy/evidence and refresh editorial batch attestations across context
+plus new prospects. The runner verifies context against saved configurations
+and rejects omitted or changed prior copy, duplicate identities and sender drift.
+Campaign-wide metadata and policy scope remain the parent campaign. Titles are
+plain email subjects; campaign identification stays in metadata and tags.

@@ -7,8 +7,8 @@ import { initStore, saveSources, loadAction, saveAction, saveItem } from '../src
 import { makeSource, makeItem } from '../src/models.js';
 import { draftCampaign, parseResearchCsv, normalizeCollection } from '../src/outreach.js';
 import { sendEmailResponse, appendEmailDraft } from '../src/adapters/email.js';
-import { writeJsonAtomic } from '../src/util.js';
-import { prospect } from './helpers/outreach-copy.js';
+import { readJson, writeJsonAtomic } from '../src/util.js';
+import { prospect, sign } from './helpers/outreach-copy.js';
 const p = prospect();
 const config = () => ({ id: 'TEST-001', mode: 'DRAFT', sending_authorized: false, source_id: 'test-mail', sender_email: 'sender@example.com', prospects: [structuredClone(p)] });
 async function fixture(t) {
@@ -69,4 +69,35 @@ test('explicit alias groups retain all records without merging common names', ()
   assert.equal(normalizeCollection(rows,'fitness').length,3);
   const groups = normalizeCollection(rows,'fitness',[{ids:['a','c'],reason:'Verified shared address and operator'}]);
   assert.equal(groups.length,2);assert.deepEqual(groups[0].original_ids,['a','c']);assert.equal(groups.flatMap(g=>g.records).length,3);
+});
+
+test('continuation batch checks previous copy and preserves natural titles and old state',async t=>{
+ const root=await fixture(t),first=config();first.prospects[0].eligible=false;
+ const before=await draftCampaign(root,first,{history:clear});
+ const b={...config(),batch_id:'BATCH-002',review_context:structuredClone(first.prospects)};
+ b.prospects[0].canonical_id='NEXT';b.prospects[0].eligible=false;
+ // Omitted/different context must fail before any persistence.
+ b.review_context=[];sign(b.prospects);await assert.rejects(draftCampaign(root,b),/previously saved/);
+ const item=await import('../src/storage.js').then(m=>m.loadItem(root,before.prospects[p.canonical_id].item_id));
+ assert.equal(item.title,first.prospects[0].subject);assert.equal(item.metadata.outreach.campaign_id,first.id);
+});
+
+test('continuation persists separately and preserves earlier records on retries',async t=>{
+ const root=await fixture(t),c=config();c.prospects[0].eligible=false;await draftCampaign(root,c,{history:clear});
+ const old=await readJson(join(root,'campaigns',c.id,'state.json'));
+ const next=prospect();Object.assign(next,{canonical_id:'NEW-GYM',name:'Another Gym',email:'another@example.test',identity_terms:['Another Gym'],eligible:false,subject:'After the challenge',copy:`Hey Another Gym team,
+
+The six-week challenge on your program page made me think about what participants choose when they finish.
+
+You describe it as an introduction to training. A planned conversation about goals and preferred activities could help someone decide what comes next while their recent experience is still fresh.
+
+At Ashford Software, my work includes building processes that support these ongoing customer conversations. I would start with how your coaches already handle the transition, then identify where useful information could be easier to share.
+
+How do you currently plan that transition with participants?`});
+ next.body=next.copy+'\n\nRobert';next.claims=[{text:'The six-week challenge on your program page',url:'https://example.test/classes',status:'VERIFIED',reviewed:true,checked_on:'2026-10-26'}];
+ const b={...c,batch_id:'BATCH-002',prospects:[next],review_context:structuredClone(c.prospects)};sign([...b.review_context,...b.prospects]);
+ const result=await draftCampaign(root,b,{history:clear});assert.ok(result.prospects['NEW-GYM']);
+ await draftCampaign(root,b,{history:()=>{throw Error('must not scan again');}});
+ assert.deepEqual(await readJson(join(root,'campaigns',c.id,'state.json')),old);
+ const changed=structuredClone(b);changed.review_context[0].subject='Changed historical copy';sign([...changed.review_context,...changed.prospects]);await assert.rejects(draftCampaign(root,changed),/previously saved/);
 });
