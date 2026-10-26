@@ -166,7 +166,9 @@ plain email subjects; campaign identification stays in metadata and tags.
 An optional private `.intake/outreach-limits.json` config enforces account-wide
 limits for reviewed-manifest and dashboard campaign sends. Set positive integer
 `daily_limit` and `batch_limit`, and an IANA `timezone`. The guard runs inside the
-shared delivery locks, counts previous campaigns and uncertain submissions, and
+shared delivery locks, counts previous campaigns and uncertain submissions across
+source aliases for the same mailbox username, uses persisted submission time rather
+than a stale manifest approval date for new attempts, and
 rejects a whole batch before SMTP when capacity is unavailable. Local midnight
 resets the daily window. Missing config preserves legacy behavior; invalid config
 blocks sending. Scheduling and research remain separate from this delivery guard.

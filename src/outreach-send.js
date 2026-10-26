@@ -19,12 +19,14 @@ export async function sendApprovedOutreach(root, manifest, dependencies = {}) {
     const previous = await readJson(journalPath, null);
     if (previous?.status === 'complete') return previous;
     if (previous) throw new Error('delivery already started; reconcile without resending');
-    const source = (await loadSources(root)).find(s => s.id === manifest.source_id);
+    const sources = await loadSources(root);
+    const source = sources.find(s => s.id === manifest.source_id);
     if (!source?.enabled || source.type !== 'email') throw new Error('enabled email source required');
     const suppressions = await readJson(join(root, 'outreach-suppressions.json'), []);
     if (!Array.isArray(suppressions) || suppressions.some(s => typeof s?.identity !== 'string')) throw new Error('invalid suppressions');
     const actions = await listActions(root);
-    checkOutreachLimits(await readJson(join(root, 'outreach-limits.json'), null), actions, source.id, manifest.entries.length);
+    const accountSourceIds = sources.filter(s => s.type === 'email' && s.config?.username?.toLowerCase() === source.config?.username?.toLowerCase()).map(s => s.id);
+    checkOutreachLimits(await readJson(join(root, 'outreach-limits.json'), null), actions, accountSourceIds, manifest.entries.length);
     const plans = [];
     for (const entry of manifest.entries) {
       assertSafeId(entry.action_id);
@@ -56,7 +58,7 @@ export async function sendApprovedOutreach(root, manifest, dependencies = {}) {
     for (const plan of plans) {
       const { action, item, entry, canonical_id } = plan;
       const id = `act_delivery_${sha256(action.id)}`;
-      const send = { ...action, id, type: 'send_response', status: 'executing', approved_by: manifest.approved_by, approved_at: manifest.approved_at, executed_at: null, result: null, metadata: { ...action.metadata, to: item.author_email, approved_delivery: entry.fingerprint, draft_action_id: action.id } };
+      const send = { ...action, id, type: 'send_response', status: 'executing', approved_by: manifest.approved_by, approved_at: manifest.approved_at, executed_at: null, result: null, metadata: { ...action.metadata, outreach_attempted_at: new Date().toISOString(), to: item.author_email, approved_delivery: entry.fingerprint, draft_action_id: action.id } };
       journal.deliveries[canonical_id] = { status: 'executing', action_id: id, draft_action_id: action.id, history: plan.history, verification: plan.verification };
       await writeJsonAtomic(journalPath, journal);
       await saveAction(root, send);

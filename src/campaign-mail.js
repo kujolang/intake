@@ -82,7 +82,8 @@ export async function editCampaignMail(root, command, id, body) {
       c.record.approval_status = 'APPROVED';
     } else if (command === 'send') {
       if (body.confirm !== true) fail(400, 'Confirm the recipient and approved message before sending');
-      checkOutreachLimits(await readJson(join(root, 'outreach-limits.json'), null), await listActions(root), c.source.id, 1);
+      const accountSourceIds = (await loadSources(root)).filter(s => s.type === 'email' && s.config?.username?.toLowerCase() === c.source.config?.username?.toLowerCase()).map(s => s.id);
+      checkOutreachLimits(await readJson(join(root, 'outreach-limits.json'), null), await listActions(root), accountSourceIds, 1);
       await checkDeliveryEligibility(root, action, item, c);
       const hash = campaignMessageHash(c.source, action, item);
       if (action.metadata?.revision_proposal || action.metadata?.campaign_review?.status !== 'approved' || action.metadata.campaign_review.content_hash !== hash) fail(400, 'Approve this exact saved message before sending');

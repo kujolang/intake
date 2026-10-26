@@ -26,3 +26,7 @@ test('dashboard deliveries count once, while archived draft receipts do not doub
   assert.throws(() => checkOutreachLimits(limit,[manual], 'mail',1,now), /daily limit/);
   checkOutreachLimits(limit,[archived], 'mail',1,now);
 });
+test('actual submission time takes precedence over stale approval and source aliases share capacity', () => {
+  const pending = {...sent(1,'execution_uncertain')[0],source_id:'alias',approved_at:'2026-10-01T00:00:00Z',metadata:{outreach:{},outreach_attempted_at:'2026-10-26T19:00:00Z'}};
+  assert.throws(() => checkOutreachLimits({...config,daily_limit:1},[pending],['mail','alias'],1,now), /daily limit/);
+});
