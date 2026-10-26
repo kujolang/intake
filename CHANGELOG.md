@@ -45,3 +45,10 @@ First tagged GitHub release. Distributed as Node.js source; not published to npm
 - Initial local-first Intake implementation.
 - CLI, dashboard, storage, policy, rules, evals, demo seed, PrivateEmail adapter, webhook/file/manual adapters.
 - Backup/restore, retention/purge, Slack Events receiver, source templates, and production-readiness hardening.
+
+### Explicit reviewed outreach delivery
+
+- Added a separate operator-authorized send runner bound to exact reviewed draft
+  snapshots, with batch preflight, duplicate prevention, durable SMTP receipts,
+  verified Sent copies, and recoverable draft archiving. Draft approval and the
+  campaign dashboard still cannot send implicitly.

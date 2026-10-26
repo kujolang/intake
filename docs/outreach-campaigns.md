@@ -159,3 +159,37 @@ plus new prospects. The runner verifies context against saved configurations
 and rejects omitted or changed prior copy, duplicate identities and sender drift.
 Campaign-wide metadata and policy scope remain the parent campaign. Titles are
 plain email subjects; campaign identification stays in metadata and tags.
+
+## Explicitly approved delivery
+
+An operator can now authorize a bounded set of already reviewed, eligible remote
+campaign drafts with `scripts/send-reviewed-outreach.mjs`. This is separate from
+draft approval and the dashboard editor. General campaign sends remain blocked.
+The operator's explicit send instruction overrides the campaign's draft-only
+policy only for the exact snapshots listed in a private authorization manifest.
+It does not enable automatic sending or authorize future batches.
+
+A manifest has `intent: "SEND_EXACT_REVIEWED_DRAFTS"`, `campaign_id`, `source_id`,
+`approved_by`, `approved_at`, the verbatim `authorization`, and 1–10 `entries`.
+Each entry contains an existing draft `action_id` and its
+`outreachDeliveryFingerprint(source, action, item)`. The fingerprint binds sender,
+recipient, subject, body, IDs, and draft Message-ID. Keep manifests private.
+
+```sh
+node scripts/send-reviewed-outreach.mjs --send /absolute/private/authorization.json .intake
+```
+
+Before any SMTP submission, the complete batch must pass saved-copy review,
+recipient eligibility, suppression, existing-action, all-folder history, and
+remote-draft checks. SMTP uses the exact approved content and existing Message-ID;
+it does not add a reply thread to a first-contact message. Delivery writes a
+journal before submission and saves the SMTP receipt before mailbox cleanup.
+It verifies a Sent copy, then moves the original draft to the recoverable
+`Archive/Outreach Sent Drafts` folder. Original draft action IDs and receipts
+remain; separate executed send actions and campaign `SENT` records track delivery.
+SMTP acceptance does not prove recipient inbox delivery.
+
+A completed identical manifest is inert. Any interrupted/uncertain attempt stops
+and requires receipt/mailbox reconciliation, never an automatic SMTP retry.
+Changing the manifest does not bypass the existing send-action guard. Inspect
+private `delivery-*.json` journals for SMTP receipts before attempting recovery.

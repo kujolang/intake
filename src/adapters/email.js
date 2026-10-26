@@ -1,3 +1,5 @@
+import MailComposer from "nodemailer/lib/mail-composer/index.js";
+import { sha256, stableStringify } from "../util.js";
 import { resourceLimit } from "../resource-limits.js";
 import { ImapFlow } from "imapflow";
 import { simpleParser } from "mailparser";
@@ -380,4 +382,49 @@ export async function replaceEmailDraft(source, previous, next, item) {
     if(!moved || (await matches(oldId)).length || (await matches(newId)).length!==1) throw new Error('revision archive uncertain; reconcile before retry');
     return {appended_to:mailbox,uid:String(added[0]),uid_validity:receipt?.uidValidity ? String(receipt.uidValidity) : null,message_id:newId,replaced_uid:String(old[0]),previous_message_id:oldId,archived_to:archive,archived_uid:moved.uidMap?.get(old[0]) ? String(moved.uidMap.get(old[0])) : null,verified:true};
   }finally{lock?.release();await client.logout().catch(()=>client.close());}
+}
+
+// Bind separate operator authorization to the precise existing draft and sender.
+export function outreachDeliveryFingerprint(source, action, item) {
+  return sha256(stableStringify({ source_id: source.id, from: source.config.from || source.config.username, username: source.config.username, action_id: action.id, item_id: item.id, to: item.author_email, subject: action.metadata?.subject, body: action.body, message_id: action.metadata?.draft_message_id }));
+}
+
+export async function deliverApprovedOutreach(source, action, item, fingerprint, recordReceipt) {
+  if (!fingerprint || fingerprint !== outreachDeliveryFingerprint(source, action, item) || typeof recordReceipt !== 'function' || action.type !== 'draft_response' || !action.metadata?.outreach || action.metadata.outreach.holds?.length || item.metadata?.outreach?.holds?.length || !item.author_email) throw new Error('exact approved outreach draft required');
+  const verified = await verifyEmailDraft(source, action, item);
+  if (!verified.ok) throw new Error('draft changed before submission');
+  const messageId = action.metadata.draft_message_id;
+  const raw = await new MailComposer({ from: source.config.from || source.config.username, to: item.author_email, subject: action.metadata.subject, text: action.body, messageId, date: new Date() }).compile().build();
+  const client = await openImap(source);
+  const sent = source.config.sent_mailbox || 'Sent', drafts = source.config.drafts_mailbox || 'Drafts', archive = 'Archive/Outreach Sent Drafts';
+  let lock, transporter;
+  const matches = async () => await client.search({ header: { 'Message-ID': messageId } }, { uid: true }) || [];
+  try {
+    lock = await client.getMailboxLock(sent);
+    if ((await matches()).length) throw new Error('Sent already contains this message; do not resend');
+    lock.release(); lock = null;
+    transporter = nodemailer.createTransport(smtpConfig(source));
+    const result = await transporter.sendMail({ envelope: { from: source.config.username, to: [item.author_email] }, raw });
+    const receipt = { message_id: messageId, accepted: result.accepted, rejected: result.rejected, response: result.response, submitted_at: new Date().toISOString() };
+    // Persist SMTP success before attempting any fallible mailbox cleanup.
+    await recordReceipt({ status: 'smtp_returned', smtp: receipt });
+    if (result.rejected?.length || result.accepted?.length !== 1 || String(result.accepted[0]).toLowerCase() !== item.author_email.toLowerCase()) throw new Error('SMTP did not accept the sole approved recipient');
+    lock = await client.getMailboxLock(sent);
+    let uids = await matches();
+    if (!uids.length) { await client.append(sent, raw, ['\\Seen']); uids = await matches(); }
+    if (uids.length !== 1) throw new Error('Sent copy requires reconciliation');
+    const m = await client.fetchOne(uids[0], { source: true }, { uid: true }), parsed = await simpleParser(m.source);
+    if (parsed.subject !== action.metadata.subject || parsed.text?.replace(/\r\n/g, '\n').trim() !== action.body.replace(/\r\n/g, '\n').trim() || parsed.to?.value?.length !== 1 || parsed.to.value[0].address.toLowerCase() !== item.author_email.toLowerCase() || parsed.from?.value?.[0]?.address.toLowerCase() !== source.config.username.toLowerCase()) throw new Error('Sent copy verification failed');
+    receipt.sent_mailbox = sent; receipt.sent_uid = String(uids[0]); receipt.sent_copy_verified = true;
+    await recordReceipt({ status: 'sent_copy_verified', smtp: receipt });
+    lock.release(); lock = null;
+    if (!(await client.list()).some(f => f.path === archive)) await client.mailboxCreate(archive);
+    lock = await client.getMailboxLock(drafts);
+    const remaining = await matches();
+    if (remaining.length !== 1 || String(remaining[0]) !== verified.uid) throw new Error('Draft cleanup requires reconciliation');
+    const moved = await client.messageMove(remaining[0], archive, { uid: true });
+    if (!moved || (await matches()).length) throw new Error('Draft archive requires reconciliation');
+    receipt.archived_to = archive; receipt.archived_uid = String(moved.uidMap?.get(remaining[0]) || '');
+    return receipt;
+  } finally { transporter?.close(); lock?.release(); await client.logout().catch(() => client.close()); }
 }
