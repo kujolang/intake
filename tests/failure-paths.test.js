@@ -8,7 +8,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { ImapFlow } from "imapflow";
 import nodemailer from "nodemailer";
-import { appendEmailDraft, sendEmailResponse, testEmailConnection } from "../src/adapters/email.js";
+import { appendEmailDraft, sendEmailResponse, testEmailConnection, inspectEmailHistory } from "../src/adapters/email.js";
 import { startDashboard } from "../src/dashboard.js";
 import { initStore, saveSources } from "../src/storage.js";
 import { makeSource } from "../src/models.js";
@@ -130,4 +130,31 @@ test("IPv6 loopback dashboard exposes a usable launch URL and authenticated API"
   const response = await fetch(`${url.origin}/api/settings`, { headers: { "x-intake-token": dashboard.token } });
   assert.equal(response.status, 200);
   assert.equal((await response.json()).settings.auto_actions_enabled, false);
+});
+
+
+test("draft append retains provider identity and never constructs SMTP", async (t) => {
+  const { source } = mockMail(t);
+  t.mock.method(nodemailer, "createTransport", () => { throw new Error("SMTP must not be used"); });
+  t.mock.method(ImapFlow.prototype, "logout", async () => {});
+  t.mock.method(ImapFlow.prototype, "append", async (folder, raw, flags) => {
+    assert.equal(folder, "Drafts");assert.deepEqual(flags, ["\\Draft"]);
+    assert.match(raw.toString(), /Message-ID: <stable@example.test>/);
+    assert.match(raw.toString(), /charset=UTF-8/);
+    return { uid: 42, uidValidity: 123n };
+  });
+  const receipt = await appendEmailDraft(source, { body: "Reviewed draft", metadata: { draft_message_id: "<stable@example.test>", subject: "Specific subject" } }, { author_email: "prospect@example.test" });
+  assert.deepEqual(receipt, { appended_to: "Drafts", uid: "42", uid_validity: "123", message_id: "<stable@example.test>" });
+});
+
+test("history inspects every selectable folder read-only and fails closed", async (t) => {
+  const { source } = mockMail(t);const seen=[];
+  t.mock.method(ImapFlow.prototype, "logout", async () => {});
+  t.mock.method(ImapFlow.prototype, "list", async () => [{path:"INBOX",flags:new Set()}, {path:"Sent",flags:new Set()}, {path:"Parent",flags:new Set(["\\Noselect"])}]);
+  t.mock.method(ImapFlow.prototype, "getMailboxLock", async (path, options) => { assert.equal(options.readOnly,true);seen.push(path);return {release(){}}; });
+  t.mock.method(ImapFlow.prototype, "search", async () => [42]);
+  const result=await inspectEmailHistory(source,["Specific Gym"]);
+  assert.deepEqual(seen,["INBOX","Sent"]);assert.equal(result.matches.length,2);assert.equal(result.complete,true);
+  t.mock.method(ImapFlow.prototype, "search", async () => { throw Error("folder unavailable"); });
+  await assert.rejects(inspectEmailHistory(source,["Specific Gym"]),/folder unavailable/);
 });

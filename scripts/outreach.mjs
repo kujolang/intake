@@ -1,0 +1,10 @@
+import { readFile } from 'node:fs/promises';
+import { resolve } from 'node:path';
+import { draftCampaign } from '../src/outreach.js';
+import { loadDotEnvFiles } from '../src/secrets.js';
+const [command, file, directory = '.intake'] = process.argv.slice(2);
+if (command !== 'draft' || !file) throw new Error('Usage: node scripts/outreach.mjs draft CAMPAIGN.json [INTAKE_DIR]. Sending is unavailable.');
+const root = resolve(directory);
+loadDotEnvFiles({ intakeDir: root });
+const state = await draftCampaign(root, JSON.parse(await readFile(file, 'utf8')));
+console.log(JSON.stringify(state, null, 2));

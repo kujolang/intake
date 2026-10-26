@@ -93,6 +93,7 @@ export async function syncEmailSource(root, source) {
 }
 
 export async function sendEmailResponse(source, action, item) {
+  if (action.metadata?.outreach || item.metadata?.outreach) throw new Error("outreach delivery is disabled; campaign drafts cannot be sent");
   const from = headerValue(source.config?.from || source.config?.username);
   const to = headerValue(item.author_email);
   if (!to) throw new Error("cannot send email response without item.author_email");
@@ -113,11 +114,16 @@ export async function sendEmailResponse(source, action, item) {
 }
 
 export async function appendEmailDraft(source, action, item) {
+  if (action.metadata?.outreach?.holds?.length || item.metadata?.outreach?.holds?.length) throw new Error("outreach draft is held for review");
   const mailbox = source.config?.drafts_mailbox || "Drafts";
   const raw = [
     `From: ${headerValue(source.config?.from || source.config?.username)}`,
     `To: ${headerValue(item.author_email || "")}`,
     `Subject: ${headerValue(action.metadata?.subject || `Re: ${item.title}`)}`,
+    action.metadata?.draft_message_id ? `Message-ID: ${headerValue(action.metadata.draft_message_id)}` : null,
+    "MIME-Version: 1.0",
+    "Content-Type: text/plain; charset=UTF-8",
+    "Content-Transfer-Encoding: 8bit",
     item.source_native_id ? `In-Reply-To: ${headerValue(item.source_native_id)}` : null,
     "",
     action.body
@@ -125,8 +131,8 @@ export async function appendEmailDraft(source, action, item) {
   const client = await openImap(source);
   let appendError;
   try {
-    await client.append(mailbox, Buffer.from(raw), ["\\Draft"]);
-    return { appended_to: mailbox };
+    const receipt = await client.append(mailbox, Buffer.from(raw), ["\\Draft"]);
+    return { appended_to: mailbox, uid: receipt?.uid ? String(receipt.uid) : null, uid_validity: receipt?.uidValidity ? String(receipt.uidValidity) : null, message_id: action.metadata?.draft_message_id || null };
   } catch (error) {
     appendError = error;
     throw error;
@@ -299,4 +305,49 @@ function redactProviderError(message, source) {
   const username = source.config?.username;
   if (username) out = out.split(username).join("[EMAIL]");
   return out;
+}
+
+// Read-only mailbox-wide history. No message contents or unrelated envelopes leave
+// the adapter. Any failed folder scan fails the entire preflight closed.
+export async function inspectEmailHistory(source, terms) {
+  if (!Array.isArray(terms) || !terms.length || terms.some(t => typeof t !== "string" || t.trim().length < 4)) throw new Error("history requires specific identity terms");
+  const client = await openImap(source);
+  const folders = [];
+  const matches = [];
+  try {
+    for (const folder of await client.list()) {
+      if (folder.flags?.has("\\Noselect")) continue;
+      const lock = await client.getMailboxLock(folder.path, { readOnly: true });
+      try {
+        const found = new Set();
+        for (const term of terms) for (const uid of (await client.search({ text: term }, { uid: true }) || [])) found.add(uid);
+        folders.push({ mailbox: folder.path, matched_messages: found.size });
+        for (const uid of found) matches.push({ mailbox: folder.path, uid: String(uid) });
+      } finally { lock.release(); }
+    }
+    return { checked_at: new Date().toISOString(), complete: true, source_id: source.id, folders, matches };
+  } finally { await client.logout().catch(() => client.close()); }
+}
+
+// Verify a known draft without marking it read or exporting mailbox content.
+export async function verifyEmailDraft(source, action, item) {
+  const messageId = action.metadata?.draft_message_id;
+  if (!messageId) throw new Error('draft Message-ID required');
+  const client = await openImap(source);
+  let lock;
+  try {
+    lock = await client.getMailboxLock(source.config?.drafts_mailbox || 'Drafts', { readOnly: true });
+    const uids = await client.search({ header: { 'Message-ID': messageId } }, { uid: true });
+    if (uids.length !== 1) return { ok: false, copies: uids.length };
+    const message = await client.fetchOne(uids[0], { source: true, flags: true }, { uid: true });
+    const parsed = await simpleParser(message.source);
+    const checks = {
+      draft_flag: message.flags.has('\\Draft'),
+      recipient: parsed.to?.value?.length === 1 && parsed.to.value[0].address.toLowerCase() === item.author_email.toLowerCase(),
+      sender: parsed.from?.value?.[0]?.address.toLowerCase() === source.config.username.toLowerCase(),
+      subject: parsed.subject === action.metadata.subject,
+      body: parsed.text?.replace(/\r\n/g, '\n').trim() === action.body.replace(/\r\n/g, '\n').trim()
+    };
+    return { ok: Object.values(checks).every(Boolean), copies: 1, uid: String(uids[0]), message_id: messageId, checks };
+  } finally { lock?.release();await client.logout().catch(() => client.close()); }
 }
