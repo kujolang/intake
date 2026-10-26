@@ -33,6 +33,7 @@ export async function reviseCampaign(root, campaign, dependencies={}) {
     for(const p of campaign.prospects){
       const record=state.prospects[p.canonical_id],old=await loadAction(root,record.action_id),item=await loadItem(root,record.item_id);
       if(!old||!item||old.type!=='draft_response'||old.source_id!==source.id||old.metadata?.outreach?.campaign_id!==campaign.id||old.metadata?.outreach?.canonical_id!==p.canonical_id) throw new Error('revision identity mismatch');
+      if(old.metadata?.campaign_review || old.metadata?.campaign_delivery || old.metadata?.delivery) throw new Error('Operator-edited or sent campaign messages must use the campaign editor; automated revision is disabled');
       if(!['executed','needs_review'].includes(old.status)) throw new Error('draft state requires reconciliation');
       if((item.author_email||null)!==(p.email||null)) throw new Error('recipient changes require separate verification');
       if(suppressions.some(s=>[p.canonical_id,p.email,...p.identity_terms].filter(Boolean).map(x=>x.toLowerCase()).includes(s.identity.toLowerCase()))) throw new Error('recipient suppressed');

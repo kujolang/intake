@@ -1,3 +1,4 @@
+import { campaignSendAuthorized } from "../campaign-message.js";
 import MailComposer from "nodemailer/lib/mail-composer/index.js";
 import { sha256, stableStringify } from "../util.js";
 import { resourceLimit } from "../resource-limits.js";
@@ -94,8 +95,9 @@ export async function syncEmailSource(root, source) {
   return { items, cursor: { uid: maxUid, synced_at: new Date().toISOString() } };
 }
 
-export async function sendEmailResponse(source, action, item) {
-  if (action.metadata?.outreach || item.metadata?.outreach) throw new Error("outreach delivery is disabled; campaign drafts cannot be sent");
+export async function sendEmailResponse(source, action, item, authorization) {
+  const campaign = action.metadata?.outreach || item.metadata?.outreach;
+  if (campaign && !campaignSendAuthorized(source, action, item, authorization)) throw new Error("unconfirmed outreach delivery is disabled; approve the saved campaign message and confirm sending");
   const from = headerValue(source.config?.from || source.config?.username);
   const to = headerValue(action.metadata?.to || item.author_email);
   if (!to) throw new Error("cannot send email response without item.author_email");
@@ -106,8 +108,8 @@ export async function sendEmailResponse(source, action, item) {
       to,
       subject: headerValue(action.metadata?.subject || `Re: ${item.title}`),
       text: action.body,
-      inReplyTo: item.source_native_id ? headerValue(item.source_native_id) : undefined,
-      references: item.source_thread_id ? headerValue(item.source_thread_id) : undefined
+      inReplyTo: !campaign && item.source_native_id ? headerValue(item.source_native_id) : undefined,
+      references: !campaign && item.source_thread_id ? headerValue(item.source_thread_id) : undefined
     });
     return { message_id: result.messageId, accepted: result.accepted, rejected: result.rejected };
   } finally {

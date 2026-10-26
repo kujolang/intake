@@ -7,7 +7,7 @@ import { startDashboard } from '../src/dashboard.js';
 import { makeSource } from '../src/models.js';
 import { initStore, saveSources, saveAction, loadAction, savePolicies } from '../src/storage.js';
 
-test('mail editor: compose, version conflicts, approval invalidation, policy blocks, campaign proposals and send replay', async () => {
+test('mail editor: compose, version conflicts, approval invalidation, policy blocks and send replay', async () => {
  const root = await mkdtemp(join(tmpdir(), 'intake-mail-')); let dashboard;
  try {
   await initStore(root); await saveSources(root, [makeSource('email', { id: 'mail', name: 'Test mail' })]);
@@ -39,15 +39,6 @@ test('mail editor: compose, version conflicts, approval invalidation, policy blo
   assert.equal(sent.action.status,'executed');
   assert.equal((await post('/api/mail/send/'+id,{version:loaded.actions.find(a => a.id === id).version,confirm:true})).status,409);
   assert.equal((await post('/api/mail/send/'+id,{version:sent.version,confirm:true})).status,400);
-  const campaign = {...await loadAction(root,id),type:'draft_response',metadata:{outreach:{campaign_id:'test'},subject:'Original'}};
-  await saveAction(root,campaign);
-  loaded = await (await fetch(base+'/api/items/'+campaign.intake_item_id+'/mail',{headers:{'x-intake-token':'test'}})).json();
-  const v = loaded.actions.find(a => a.id === id).version;
-  assert.equal((await post('/api/mail/send/'+id,{version:v,confirm:true})).status,400);
-  const proposal = await post('/api/mail/proposal/'+id,{version:v,subject:'Suggested subject',body:'Suggested copy'});
-  assert.equal(proposal.action.body,campaign.body);
-  assert.equal(proposal.action.metadata.revision_proposal.status,'awaiting_copy_review');
-  assert.equal(proposal.action.metadata.revision_proposal.body,'Suggested copy');
   await savePolicies(root,[{id:'test',allowed_actions:['append_remote_draft'],blocked_actions:[],requires_human_review:true}]);
   const mailboxDraft = await post('/api/mail/compose',fields);
   await saveAction(root,{...mailboxDraft.action,metadata:{...mailboxDraft.action.metadata,demo_seed_id:'append-test'}});

@@ -1440,32 +1440,48 @@ function dashboardHtml() {
       const subject = input("mailSubject", proposal?.subject || action?.metadata?.subject || (item ? "Re: " + item.title : ""));
       const body = el("textarea", { id: "mailBody", "aria-label": "Email message", rows: "16", placeholder: "Write your email…" });
       body.value = proposal?.body || action?.body || "";
-      const immutable = action && (["executing", "execution_uncertain", "rejected"].includes(action.status) || (action.status === "executed" && action.type === "send_response"));
-      if (campaign || immutable) to.disabled = true;
-      if (immutable) { subject.disabled = true; body.disabled = true; }
-      let dirty = !action, busy = false;
-      const notice = el("div", { class: "muted", role: "status", text: campaign ? "Campaign draft · Edits are saved for copy review. Sending is disabled for this campaign." : action?.status === "executed" && action.type === "send_response" ? "Sent" : action ? "Saved draft · " + action.status : "New email" });
+      const isImmutable = () => action && (["executing", "execution_uncertain", "rejected"].includes(action.status) || (action.status === "executed" && action.type === "send_response") || Boolean(action.metadata?.delivery || item?.metadata?.outreach?.delivery) || ["sending", "sent", "uncertain"].includes(action.metadata?.campaign_delivery?.status));
+      const freeze = () => { to.disabled = Boolean(campaign || isImmutable()); subject.disabled = Boolean(isImmutable()); body.disabled = Boolean(isImmutable()); };
+      freeze();
+      let dirty = !action || Boolean(proposal), busy = false;
+      state.mailDirty = dirty;
+      function campaignStatus() {
+        const delivery = action?.metadata?.campaign_delivery;
+        if (action?.metadata?.delivery || item?.metadata?.outreach?.delivery) return "Email already sent through the reviewed campaign workflow.";
+        if (delivery?.status === "sent") return "Email sent. The earlier mailbox draft is unchanged.";
+        if (["sending", "uncertain"].includes(delivery?.status)) return "Delivery needs reconciliation. Do not resend from Intake or your mailbox.";
+        if (action?.metadata?.revision_proposal) return "Save your proposed edits before approving.";
+        return action?.metadata?.campaign_review?.status === "approved" ? "Draft approved. Send email will ask for confirmation." : "Review the recipient, subject and message, then approve this draft. Approval does not send.";
+      }
+      const notice = el("div", { class: "muted", role: "status", text: campaign ? campaignStatus() : action?.status === "executed" && action.type === "send_response" ? "Sent" : action ? "Saved draft · " + action.status : "New email" });
       const send = button("Send email", async () => {
-        if (!action || dirty || busy) return;
-        if (!confirm("Send this saved email to " + to.value + "?\\n\\n" + subject.value)) return;
+        if (!action || dirty || busy || isImmutable()) return;
+        if (!confirm("Send this approved email to " + to.value + "?\\n\\n" + subject.value + "\\n\\nThis sends the email now.")) return;
         await perform("send", { version: action.version, confirm: true });
       }, "primary", true, "send");
+      const approve = button("Approve draft", () => perform("approve", { version: action.version, reviewed: true }), "", true, "check");
       const mailbox = button("Save to mailbox", () => perform("append", { version: action.version, confirm: true }), "", true, "mail");
-      function updateSend() { send.disabled = !action || dirty || busy || campaign || immutable || action.status === "executed"; mailbox.disabled = send.disabled; }
-      [to, subject, body, source].forEach(control => control.addEventListener("input", () => { dirty = true; state.mailDirty = true; notice.textContent = "Unsaved changes"; updateSend(); }));
+      function updateSend() {
+        const unavailable = !action || dirty || busy || isImmutable();
+        send.disabled = Boolean(unavailable || (campaign ? action.metadata?.campaign_review?.status !== "approved" : action.status === "executed"));
+        approve.disabled = Boolean(unavailable || !campaign || action.metadata?.campaign_review?.status === "approved");
+        mailbox.disabled = Boolean(unavailable || campaign || action.status === "executed");
+      }
+      [to, subject, body, source].forEach(control => control.addEventListener("input", () => { dirty = true; state.mailDirty = true; notice.textContent = "Unsaved changes · Save before approving or sending"; updateSend(); }));
       async function perform(command, payload) {
         busy = true; save.disabled = true; updateSend();
         try {
           const result = await api("/api/mail/" + command + (action ? "/" + encodeURIComponent(action.id) : ""), { method: "POST", body: JSON.stringify(payload) });
           action = { ...result.action, version: result.version }; source.disabled = true; dirty = false; state.mailDirty = false;
-          notice.textContent = command === "send" ? (action.status === "executed" ? "Email sent" : action.result?.error || "Sending blocked by policy. Review Policies and the source allowed actions.") : command === "append" ? (action.status === "executed" ? "Saved to mailbox" : action.result?.error || "Mailbox save blocked") : campaign ? "Proposal saved for campaign copy review" : "Draft saved";
+          notice.textContent = campaign ? (command === "save" ? "Draft saved. Approve this version before sending. Mailbox draft unchanged." : command === "approve" ? "Draft approved. Send email will ask for confirmation." : campaignStatus()) : command === "send" ? (action.status === "executed" ? "Email sent" : action.result?.error || "Sending blocked by policy. Review Policies and the source allowed actions.") : command === "append" ? (action.status === "executed" ? "Saved to mailbox" : action.result?.error || "Mailbox save blocked") : "Draft saved";
           if (result.item) { state.selectedItem = result.item; state.selectedItemId = result.item.id; }
+          if (campaign && action.metadata?.campaign_delivery?.status === "sent") { state.inboxView = "done"; state.selectedQueue = ""; state.sidebarFilter = ""; }
           state.summary = await api("/api/summary"); await resetItems(); renderShell(); renderItems();
-          if (command === "send" && action.status === "executed") { to.disabled = true; subject.disabled = true; body.disabled = true; }
+          freeze();
         } catch (error) { notice.textContent = error.message; }
-        finally { busy = false; save.disabled = Boolean(immutable || action?.type === "send_response" && action.status === "executed"); updateSend(); }
+        finally { busy = false; save.disabled = Boolean(isImmutable()); updateSend(); }
       }
-      const save = button(campaign ? "Save for review" : "Save draft", () => perform(campaign ? "proposal" : action ? "save" : item ? "reply" : "compose", { item_id: item?.id, version: action?.version, source_id: source.value, to: to.value, subject: subject.value, body: body.value }), "", Boolean(immutable), "device-floppy");
+      const save = button("Save draft", () => perform(action ? "save" : item ? "reply" : "compose", { item_id: item?.id, version: action?.version, source_id: source.value, to: to.value, subject: subject.value, body: body.value }), "", Boolean(isImmutable()), "device-floppy");
       panel.append(el("h2", { text: campaign ? "Campaign draft" : composing ? "Compose email" : "Email draft" }));
       if (actions.length > 1) {
         const picker = select("mailDraft", actions.map(a => a.id), action.id);
@@ -1474,8 +1490,8 @@ function dashboardHtml() {
         panel.append(label("Version", picker));
       }
       if (!action && !campaign) panel.append(label("From account", source));
-      else panel.append(el("div", { class: "muted", text: "From: " + (state.sources.find(s => s.id === item?.source_id)?.name || item?.source_id || "") }));
-      panel.append(label("To", to), label("Subject", subject), label("Message", body), el("div", { class: "controls" }, [save, campaign ? "" : send]), notice);
+      else { const account = state.sources.find(s => s.id === item?.source_id); panel.append(el("div", { class: "muted", text: "From: " + (account?.config?.from || account?.config?.username || account?.name || item?.source_id || "") })); }
+      panel.append(label("To", to), label("Subject", subject), label("Message", body), el("div", { class: "controls" }, [save, campaign ? approve : "", send]), notice);
       if (!campaign) panel.append(el("details", { class: "disclosure" }, [el("summary", { text: "Mailbox actions" }), mailbox]));
       qs("#itemDetail").append(panel);
       updateSend();

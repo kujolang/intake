@@ -1,6 +1,6 @@
 import { readdir } from 'node:fs/promises';
 import { copyHash, requireCampaignCopy } from './outreach-copy.js';
-// Draft-only campaign support. Live sending is deliberately unavailable.
+// Automated campaign creation stays draft-only; explicit operator delivery is separate.
 import { join } from 'node:path';
 import { withStoreLock } from './store-lock.js';
 import { loadSources, listItems, listActions, loadAction, saveItem, saveAction, logEvent } from './storage.js';
@@ -94,6 +94,10 @@ export async function draftCampaign(root, campaign, dependencies = {}) {
       const itemId = `itm_outreach_${key}`;
       const existing = await loadAction(root, actionId);
       if (existing) {
+        if (existing.metadata?.campaign_review || existing.metadata?.campaign_delivery || existing.metadata?.delivery) {
+          if (!state.prospects[p.canonical_id]) throw new Error("Operator campaign state requires reconciliation");
+          continue; // Preserve manual edits, delivery receipts and sent status.
+        }
         if (existing.metadata?.outreach?.content_hash !== sha256(stableStringify(p))) throw new Error('existing business draft differs; manual review required');
         state.prospects[p.canonical_id] = { ...(state.prospects[p.canonical_id] || {}), action_id: actionId, item_id: itemId, status: existing.status === 'executed' ? 'DRAFTED' : (state.prospects[p.canonical_id]?.status || 'NEEDS_VERIFICATION'), receipt: existing.result, note: 'Existing draft/proposal preserved; no retry or duplicate append.' };
         continue;

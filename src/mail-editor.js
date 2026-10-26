@@ -1,3 +1,4 @@
+import { editCampaignMail } from "./campaign-mail.js";
 import { makeAction, makeItem } from './models.js';
 import { loadAction, loadItem, loadSources, listActions, saveAction, saveItem, logEvent } from './storage.js';
 import { sha256, stableStringify } from './util.js';
@@ -42,16 +43,7 @@ export async function editMail(root, command, id, body) {
   const item = await loadItem(root, action.intake_item_id);
   if (!item || !['draft_response', 'send_response'].includes(action.type)) fail(400, 'Not an email draft');
   const campaign = action.metadata?.outreach || item.metadata?.outreach;
-  if (command === 'proposal') {
-    if (!campaign) fail(400, 'Only campaign drafts use review proposals');
-    const subject = String(body.subject || '').trim(), text = String(body.body || '');
-    if (!subject || /[\r\n]/.test(subject) || !text.trim()) fail(400, 'Subject and message are required');
-    const next = { ...action, metadata: { ...action.metadata, revision_proposal: { subject, body: text, based_on: mailVersion(action), status: 'awaiting_copy_review', proposed_by: 'dashboard', proposed_at: new Date().toISOString() } } };
-    await saveAction(root, next);
-    await logEvent(root, 'audit', { event_type: 'mail_revision_proposed', action_id: id, item_id: item.id });
-    return { action: next, version: mailVersion(next) };
-  }
-  if (campaign) fail(400, 'Campaign sending is disabled. Save a review proposal; apply reviewed copy through outreach revise.');
+  if (campaign) return editCampaignMail(root, command, id, body);
   if (locked(action)) fail(400, 'This message cannot be edited or sent; reconcile uncertain delivery before retrying');
   const source = (await loadSources(root)).find(s => s.id === action.source_id && s.type === 'email' && s.enabled);
   if (!source) fail(400, 'An enabled email account is required');

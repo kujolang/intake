@@ -1,10 +1,11 @@
-# Draft-only outreach campaigns
+# Outreach campaigns
 
 Intake can preserve researched outbound proposals in its local review queue and
 append eligible drafts to the configured email source's IMAP Drafts folder.
-This pilot interface never sends, schedules, or queues delivery. Campaign items
-and actions are blocked at the SMTP adapter even if an action is changed to
-`send_response` or approved through the ordinary UI.
+Automated draft creation never sends, schedules, or queues delivery. Individual
+messages can be sent from the dashboard after explicit operator approval and
+confirmation; reviewed batches can use the separate manifest workflow below.
+Ordinary generic action approval alone still cannot send campaign mail.
 
 ```sh
 node scripts/outreach.mjs draft /absolute/path/campaign.json .intake
@@ -135,8 +136,8 @@ node scripts/outreach.mjs revise path/to/reviewed-campaign.json .intake
 
 Keep membership, sender and recipients unchanged; increase `copy_revision`.
 This rechecks history and holds, replaces eligible mailbox drafts, and updates
-held proposals locally. Ordinary dashboard draft/edit controls reject campaign
-items so they cannot skip copy review. Sending remains disabled.
+held proposals locally. Generic action edit controls reject campaign items. The dedicated campaign
+editor supports explicit operator edits and approval as described below.
 
 IMAP requires a new UID and Message-ID for a new body. The runner reads back the
 new draft before moving the old UID into `Archive/Outreach Revisions`. It retains
@@ -193,3 +194,21 @@ A completed identical manifest is inert. Any interrupted/uncertain attempt stops
 and requires receipt/mailbox reconciliation, never an automatic SMTP retry.
 Changing the manifest does not bypass the existing send-action guard. Inspect
 private `delivery-*.json` journals for SMTP receipts before attempting recovery.
+
+## Manual dashboard editing and sending
+
+Open a campaign draft, edit its subject/message, choose **Save draft**, then
+**Approve draft** after reviewing the exact content. **Send email** asks for a
+recipient/subject confirmation; canceling sends nothing. This explicit operator
+workflow is an exception to draft-only automation policy for that one message,
+not a policy change or an authorization for unattended sending. Contact holds,
+suppression, verified recipients, sender identity, and prior delivery checks
+remain enforced. An edit invalidates the previous approval.
+
+See [the email editor guide](mail-editor.md) for API fields and persistence.
+Operator review is recorded separately from the scored agent-copy workflow.
+The UI preserves original IDs and draft receipts. It sends the saved local text;
+it does not replace or delete the older mailbox draft. The success message makes
+that distinction explicit. Sent and uncertain messages are locked against retries,
+and automated drafting/revision cannot overwrite their operator state. Messages
+already submitted by the reviewed-batch CLI cannot be sent again from this UI.

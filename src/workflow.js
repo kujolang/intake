@@ -281,6 +281,7 @@ async function runActionStoreLocked(root, actionId) {
 
 async function runActionLocked(root, actionId) {
   const action = await requireAction(root, actionId);
+  if (action.metadata?.outreach && (action.metadata?.campaign_review || action.metadata?.campaign_delivery)) throw new Error("Use the campaign editor to approve and confirm this operator-reviewed message");
   if (["executed", "rejected"].includes(action.status)) {
     return action;
   }
