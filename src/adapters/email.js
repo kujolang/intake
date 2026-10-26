@@ -351,3 +351,33 @@ export async function verifyEmailDraft(source, action, item) {
     return { ok: Object.values(checks).every(Boolean), copies: 1, uid: String(uids[0]), message_id: messageId, checks };
   } finally { lock?.release();await client.logout().catch(() => client.close()); }
 }
+
+// IMAP bodies are immutable. Verify the old copy, append/read back the new one,
+// then move only the old UID into a recoverable archive. Never use SMTP.
+export async function replaceEmailDraft(source, previous, next, item) {
+  if (previous.type !== 'draft_response' || next.type !== 'draft_response' || next.metadata?.outreach?.mode !== 'DRAFT') throw new Error('only draft replacement is supported');
+  if (next.metadata?.outreach?.holds?.length || item.metadata?.outreach?.holds?.length) throw new Error('held draft cannot be replaced remotely');
+  const oldId=previous.metadata?.draft_message_id, newId=next.metadata?.draft_message_id;
+  if(!oldId || !newId || oldId===newId) throw new Error('distinct versioned Message-IDs required');
+  const client=await openImap(source);let lock;
+  const mailbox=source.config?.drafts_mailbox || 'Drafts', archive='Archive/Outreach Revisions';
+  const raw=[`From: ${headerValue(source.config?.from || source.config?.username)}`,`To: ${headerValue(item.author_email)}`,`Subject: ${headerValue(next.metadata.subject)}`,`Message-ID: ${headerValue(newId)}`,'MIME-Version: 1.0','Content-Type: text/plain; charset=UTF-8','Content-Transfer-Encoding: 8bit','',next.body].join('\r\n');
+  const matches=async id=>await client.search({header:{'Message-ID':id}},{uid:true}) || [];
+  const check=async (uid,action)=>{
+    const m=await client.fetchOne(uid,{source:true,flags:true},{uid:true});const p=await simpleParser(m.source);
+    if(!m.flags.has('\\Draft') || p.subject!==action.metadata.subject || p.text?.replace(/\r\n/g,'\n').trim()!==action.body.replace(/\r\n/g,'\n').trim() || p.to?.value?.length!==1 || p.to.value[0].address.toLowerCase()!==item.author_email.toLowerCase() || p.from?.value?.[0]?.address.toLowerCase()!==source.config.username.toLowerCase()) throw new Error('draft changed or readback failed; reconcile before retry');
+  };
+  try{
+    if(!(await client.list()).some(f=>f.path===archive)) await client.mailboxCreate(archive);
+    lock=await client.getMailboxLock(mailbox);
+    const old=await matches(oldId), newer=await matches(newId);
+    if(old.length!==1 || newer.length) throw new Error('unexpected draft versions; reconcile before retry');
+    await check(old[0],previous);
+    const receipt=await client.append(mailbox,Buffer.from(raw),['\\Draft']);
+    const added=await matches(newId);if(added.length!==1) throw new Error('replacement append uncertain; reconcile before retry');
+    await check(added[0],next);
+    const moved=await client.messageMove(old[0],archive,{uid:true});
+    if(!moved || (await matches(oldId)).length || (await matches(newId)).length!==1) throw new Error('revision archive uncertain; reconcile before retry');
+    return {appended_to:mailbox,uid:String(added[0]),uid_validity:receipt?.uidValidity ? String(receipt.uidValidity) : null,message_id:newId,replaced_uid:String(old[0]),previous_message_id:oldId,archived_to:archive,archived_uid:moved.uidMap?.get(old[0]) ? String(moved.uidMap.get(old[0])) : null,verified:true};
+  }finally{lock?.release();await client.logout().catch(()=>client.close());}
+}

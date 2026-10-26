@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Require versioned Ashford outreach copy review, sourced claims, 34/40 quality scores and campaign-wide distinctiveness checks before draft persistence.
+- Revise existing campaign records with verified IMAP replacement, recoverable prior versions and fail-closed recovery journals; prevent dashboard edits from bypassing outreach review.
+
 - Add a draft-only outreach campaign runner with explicit identity grouping, mailbox-wide history checks, account suppression holds, and resumable Intake review records.
 - Preserve IMAP draft UID and Message-ID receipts and block campaign delivery at the email adapter.
 

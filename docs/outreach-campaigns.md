@@ -116,3 +116,34 @@ authorized campaign, configure a policy limited to the sending source and
 `append_remote_draft`, blocking `send_response`, and retaining human review with
 automatic execution disabled. A confirmed pre-execution policy block can be
 reconciled after checking history again; an uncertain external result cannot.
+
+## Writing review and revisions
+
+All future Ashford campaigns use [writing policy 1.0.0](ASHFORD_OUTREACH_WRITING_POLICY.md)
+and the installed `orwell-writing` skill. Before persistence, supply the prospect's
+`copy`, `angle`, `observation`, `implication`, `opportunity`, dated `claims`, and
+`copy_review`. Scores need eight dimension rationales, at least 34/40 and accuracy
+5/5. Bind review to `copyHash(prospect)` and the campaign hash returned by
+`checkCampaignCopy`. A passing hash establishes review continuity, not truth;
+review the material claims and batch structure explicitly before attesting.
+
+To update an existing campaign without changing its local action/item IDs:
+
+```sh
+node scripts/outreach.mjs revise path/to/reviewed-campaign.json .intake
+```
+
+Keep membership, sender and recipients unchanged; increase `copy_revision`.
+This rechecks history and holds, replaces eligible mailbox drafts, and updates
+held proposals locally. Ordinary dashboard draft/edit controls reject campaign
+items so they cannot skip copy review. Sending remains disabled.
+
+IMAP requires a new UID and Message-ID for a new body. The runner reads back the
+new draft before moving the old UID into `Archive/Outreach Revisions`. It retains
+original records and per-message receipts in a private revision journal. A
+completed exact rerun is a no-op; any pending journal blocks retries, including
+changed input, until the mailbox and local records are reconciled. Never remove
+a pending journal to force an automatic retry. A network interruption can leave
+two versions temporarily; inspect Message-IDs before restoring a single active
+draft. The archive UID is retained for later history checks where the server
+provides it; missing archive identity requires manual reconciliation.
