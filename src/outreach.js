@@ -1,3 +1,4 @@
+import { requireCampaignCopy } from './outreach-copy.js';
 // Draft-only campaign support. Live sending is deliberately unavailable.
 import { join } from 'node:path';
 import { withStoreLock } from './store-lock.js';
@@ -66,6 +67,7 @@ export function validateCampaign(c) {
 
 export async function draftCampaign(root, campaign, dependencies = {}) {
   validateCampaign(campaign);
+  requireCampaignCopy(campaign.prospects);
   return withStoreLock(root, async () => {
     const sources = await loadSources(root);
     const source = sources.find(s => s.id === campaign.source_id);
@@ -109,7 +111,7 @@ export async function draftCampaign(root, campaign, dependencies = {}) {
       if (!p.eligible) holds.push('Prospect not eligible for remote draft');
       if (!p.email || p.contact_status !== 'VERIFIED') holds.push('NEEDS_CONTACT_ROUTE');
       const status = holds.length ? (suppressed ? 'DO_NOT_CONTACT' : !p.email ? 'NEEDS_CONTACT_ROUTE' : 'NEEDS_VERIFICATION') : 'AWAITING_APPROVAL';
-      const metadata = { outreach: { campaign_id: campaign.id, canonical_id: p.canonical_id, original_ids: p.original_ids, mode: 'DRAFT', send_blocked: true, content_hash: sha256(stableStringify(p)), holds, sources: p.sources, qa: p.qa }, subject: p.subject, draft_message_id: `<ashford-${key}@${campaign.sender_email.split('@')[1]}>` };
+      const metadata = { outreach: { campaign_id: campaign.id, canonical_id: p.canonical_id, original_ids: p.original_ids, mode: 'DRAFT', send_blocked: true, content_hash: sha256(stableStringify(p)), holds, sources: p.sources, qa: p.qa, copy_review: p.copy_review }, subject: p.subject, draft_message_id: `<ashford-${key}@${campaign.sender_email.split('@')[1]}>` };
       await saveItem(root, makeItem({ id: itemId, source_id: source.id, source_type: 'email', title: `${campaign.id}: ${p.name}`, body: p.body, author: p.name, author_email: p.email || null, queue: 'sales', category: `outreach:${campaign.id}`, status: 'needs_review', tags: ['outreach', campaign.id], metadata }));
       await saveAction(root, makeAction({ id: actionId, intake_item_id: itemId, source_id: source.id, type: 'draft_response', status: 'needs_review', body: p.body, metadata }));
       state.prospects[p.canonical_id] = { status, item_id: itemId, action_id: actionId, holds, history: { ...checked, local_item_count: local.length, local_action_count: localActions.length }, receipt: null };

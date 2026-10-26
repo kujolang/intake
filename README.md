@@ -8,6 +8,8 @@ Kujo Intake collects email, webhooks, file drops, and manual input into a local 
 
 Version **0.3.0** is a GitHub source release. It runs on Node.js 22.23.4+, 24.22.1+, or 26.12.1+ (supported release lines) and stores state in local files. Read the [release notes](docs/releases/0.3.0.md) before upgrading an existing checkout.
 
+Ashford outreach uses the [versioned writing policy](docs/ASHFORD_OUTREACH_WRITING_POLICY.md) alongside Orwell for every campaign. See [draft and revision workflows](docs/outreach-campaigns.md).
+
 ## What It Does
 
 ```text

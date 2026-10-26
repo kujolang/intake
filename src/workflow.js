@@ -200,6 +200,7 @@ export async function proposeDraft(root, itemId, options = {}) {
 
 async function proposeDraftLocked(root, itemId, options = {}) {
   const item = await requireItem(root, itemId);
+  if (item.metadata?.outreach) throw new Error('Outreach drafts require the reviewed campaign draft/revise workflow');
   const source = await sourceFor(root, item.source_id);
   const settings = await loadSettings(root);
   const policies = await loadPolicies(root);

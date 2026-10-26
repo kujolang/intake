@@ -329,6 +329,7 @@ async function createDashboardAction(root, body) {
   if (!itemId) throw httpError(400, "action requires item_id");
   if (!type) throw httpError(400, "action requires type");
   const item = await requireItem(root, itemId);
+  if (item.metadata?.outreach) throw httpError(400, "Outreach drafts require the reviewed campaign workflow");
   const action = makeAction({
     intake_item_id: item.id,
     source_id: item.source_id,
@@ -366,6 +367,8 @@ async function updateDashboardAction(root, actionId, body) {
 async function updateDashboardActionLocked(root, actionId, body) {
   const action = await loadAction(root, actionId);
   if (!action) throw httpError(404, "no such action");
+  const item = await requireItem(root, action.intake_item_id);
+  if (action.metadata?.outreach || item.metadata?.outreach) throw httpError(400, "Outreach edits require the reviewed campaign revision workflow");
   if (["executed", "executing", "execution_uncertain"].includes(action.status)) throw httpError(400, "executed actions cannot be edited");
   const next = {
     ...action,

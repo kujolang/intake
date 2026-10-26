@@ -21,6 +21,8 @@ const REQUIRED_ROOT_ENTRIES = [
 ];
 
 const IGNORED_ROOT_ENTRIES = new Set([
+  "AGENTS.md",
+  "output",
   ".nvmrc",
   ".DS_Store",
   ".git",

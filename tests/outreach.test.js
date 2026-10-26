@@ -8,7 +8,8 @@ import { makeSource, makeItem } from '../src/models.js';
 import { draftCampaign, parseResearchCsv, normalizeCollection } from '../src/outreach.js';
 import { sendEmailResponse, appendEmailDraft } from '../src/adapters/email.js';
 import { writeJsonAtomic } from '../src/util.js';
-const p = { canonical_id: 'ASH-TEST', name: 'Specific Gym', email: 'owner@example.com', original_ids: ['ASH-TEST'], identity_terms: ['Specific Gym'], subject: 'First visit', body: 'Reviewed content', eligible: true, contact_status: 'VERIFIED', sources: ['https://example.com/contact'], qa: { passed: true } };
+import { prospect } from './helpers/outreach-copy.js';
+const p = prospect();
 const config = () => ({ id: 'TEST-001', mode: 'DRAFT', sending_authorized: false, source_id: 'test-mail', sender_email: 'sender@example.com', prospects: [structuredClone(p)] });
 async function fixture(t) {
   const root = await mkdtemp(join(tmpdir(), 'intake-outreach-'));t.after(() => rm(root, { recursive: true, force: true }));
@@ -30,7 +31,7 @@ test('simulated successful append persists draft receipt; restart never duplicat
   assert.equal(first.prospects[p.canonical_id].status, 'DRAFTED');
   const second = await draftCampaign(root, config(), { history: () => { throw Error('must not rescan existing'); }, execute });
   assert.equal(second.prospects[p.canonical_id].receipt.uid, '42');assert.equal(appends, 1);
-  const changed = config();changed.prospects[0].body = 'changed';await assert.rejects(draftCampaign(root, changed), /campaign changed/);
+  const changed = config();changed.prospects[0].body = 'changed';await assert.rejects(draftCampaign(root, changed), /copy gate failed/);
 });
 test('send adapter blocks campaign items even when action metadata is removed', async () => {
   await assert.rejects(sendEmailResponse({}, { metadata: {} }, { metadata: { outreach: { mode: 'DRAFT' } } }), /disabled/);
