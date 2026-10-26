@@ -227,6 +227,12 @@ Then send a harmless fake support email to the mailbox, sync again, open the ite
 
 For email sources, a `draft_response` action appends a draft to the configured Drafts mailbox. Direct sending remains blocked by the default policy.
 
+## Outreach pilot
+
+The [draft-only campaign interface](docs/outreach-campaigns.md) saves researched
+proposals in Intake and eligible drafts in the selected mailbox. It checks
+existing history and holds uncertain identities. Campaign sending is disabled.
+
 ## Policy and Safety
 
 The default policy blocks auto-send and requires human review for outbound behavior. High-risk legal, security, refund, and prompt-injection items are routed to review. The global auto-action kill switch is off by default:

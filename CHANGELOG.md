@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- Add a draft-only outreach campaign runner with explicit identity grouping, mailbox-wide history checks, account suppression holds, and resumable Intake review records.
+- Preserve IMAP draft UID and Message-ID receipts and block campaign delivery at the email adapter.
+
 All notable changes to Kujo Intake are tracked here.
 
 This project follows a lightweight semantic versioning policy:
