@@ -95,7 +95,7 @@ export async function syncEmailSource(root, source) {
 export async function sendEmailResponse(source, action, item) {
   if (action.metadata?.outreach || item.metadata?.outreach) throw new Error("outreach delivery is disabled; campaign drafts cannot be sent");
   const from = headerValue(source.config?.from || source.config?.username);
-  const to = headerValue(item.author_email);
+  const to = headerValue(action.metadata?.to || item.author_email);
   if (!to) throw new Error("cannot send email response without item.author_email");
   const transporter = nodemailer.createTransport(smtpConfig(source));
   try {
@@ -118,7 +118,7 @@ export async function appendEmailDraft(source, action, item) {
   const mailbox = source.config?.drafts_mailbox || "Drafts";
   const raw = [
     `From: ${headerValue(source.config?.from || source.config?.username)}`,
-    `To: ${headerValue(item.author_email || "")}`,
+    `To: ${headerValue(action.metadata?.to || item.author_email || "")}`,
     `Subject: ${headerValue(action.metadata?.subject || `Re: ${item.title}`)}`,
     action.metadata?.draft_message_id ? `Message-ID: ${headerValue(action.metadata.draft_message_id)}` : null,
     "MIME-Version: 1.0",

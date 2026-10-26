@@ -1,3 +1,4 @@
+import { editMail, itemMail } from "./mail-editor.js";
 import { withStoreLock } from "./store-lock.js";
 import { randomBytes } from "node:crypto";
 import { createServer as createHttpServer } from "node:http";
@@ -149,6 +150,8 @@ async function routeApi(root, method, url, body, session = {}) {
   const parts = url.pathname.split("/").filter(Boolean);
   if (parts[0] !== "api") throw httpError(404, "not found");
 
+  if (method === "POST" && parts[1] === "mail") return editMail(root, parts[2], parts[3], body);
+  if (method === "GET" && parts[1] === "items" && parts[3] === "mail") return itemMail(root, parts[2]);
   if (method === "GET" && parts[1] === "summary") return summary(root);
   if (method === "GET" && parts[1] === "items" && parts.length === 2) {
     return { items: await listItemIndex(root, filtersFrom(url)) };
@@ -932,6 +935,10 @@ function dashboardHtml() {
     .log-row { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12px; overflow-wrap: anywhere; }
     .statusline { min-height: 20px; color: var(--muted); font-size: 13px; margin-bottom: 8px; }
     .source-form { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin: 12px 0 14px; padding: 12px; border-radius: 8px; background: #ffffff; }
+    .mail-editor { display: grid; gap: 12px; }
+    .mail-editor label { display: grid; gap: 5px; font-size: 12px; color: var(--muted); }
+    .mail-editor textarea { width: 100%; min-height: 320px; line-height: 1.6; resize: vertical; }
+    .mail-editor input, .mail-editor select { width: 100%; min-width: 0; }
     .source-form .wide { grid-column: span 3; }
     .source-form label { display: grid; gap: 4px; color: var(--muted); font-size: 12px; }
     .setup-guide { display: grid; gap: 10px; margin-bottom: 12px; }
@@ -959,6 +966,7 @@ function dashboardHtml() {
       <div class="brand">
         <h1>Kujo Intake</h1>
         <div class="top-actions">
+          <button id="composeBtn" title="Compose email" aria-label="Compose email" data-icon="edit"></button>
           <button id="killSwitch" class="kill icon-btn" title="Auto-actions off" aria-label="Auto-actions off" data-icon="power"></button>
           <button id="refreshBtn" class="icon-btn" title="Refresh" aria-label="Refresh" data-icon="refresh"></button>
         </div>
@@ -1305,8 +1313,12 @@ function dashboardHtml() {
       setStatus("Resolved " + result.updated_count + " item" + (result.updated_count === 1 ? "" : "s"));
     }
     async function selectItem(id) {
+      if (state.mailDirty && !confirm("Discard unsaved email changes?")) return;
+      state.mailDirty = false;
       state.selectedItemId = id;
-      const { item } = await api("/api/items/" + encodeURIComponent(id));
+      const [{ item }, { actions }] = await Promise.all([api("/api/items/" + encodeURIComponent(id)), api("/api/items/" + encodeURIComponent(id) + "/mail")]);
+      if (state.selectedItemId !== id) return;
+      state.mailActions = actions;
       state.selectedItem = item;
       renderDetail();
       renderItems();
@@ -1318,7 +1330,7 @@ function dashboardHtml() {
         el("h2", { text: item.title }),
         el("div", { class: "rowmeta" }, [pill(item.queue), pill(item.status), pill(item.assigned_human || item.assigned_agent || "Unassigned"), isCurrentlySnoozed(item) ? pill("Later until " + formatDateTime(item.snoozed_until)) : pill(item.risk_level, item.risk_level)]),
         el("div", { class: "reader-meta", text: (item.author_email || item.author || "Unknown sender") + " · " + formatDateTime(item.received_at) }),
-        el("div", { class: "bodytext", text: item.normalized_text || item.body || "" }),
+        item.metadata?.outreach ? "" : el("div", { class: "bodytext", text: item.normalized_text || item.body || "" }),
         item.ai_summary ? el("div", { class: "field" }, [el("b", { text: "Summary" }), el("p", { text: item.ai_summary })]) : "",
         item.attachments?.length ? attachmentSection(item) : "",
         el("details", { class: "disclosure field" }, [
@@ -1331,6 +1343,7 @@ function dashboardHtml() {
         ])
       );
       renderWorkSurface(item);
+      if (item.source_type === "email") renderMailEditor(item);
     }
     function ruleMatchSection(item) {
       const matches = item.policy?.rule_matches || [];
@@ -1372,14 +1385,14 @@ function dashboardHtml() {
       ]);
     }
     function renderWorkSurface(item) {
-      qs(".sidepanel h2").textContent = "Reply & actions";
+      qs(".sidepanel h2").textContent = item.source_type === "email" ? "Organize" : "Reply & actions";
       const draft = el("textarea", { id: "draftBody", "aria-label": "Reply draft", placeholder: "Write a reply draft…" });
       const tagInput = el("input", { id: "tagInput", placeholder: "Add tag, e.g. docs-needed" });
       const queueInput = el("input", { id: "queueInput", placeholder: "Move to queue", value: item.queue });
       qs("#workSurface").replaceChildren(
         el("div", { class: "quick-actions" }, [
           iconButton(state.summary?.settings?.ai_enabled ? "Classify with AI" : "Classify with rules", () => itemPost(item.id, "classify", { ai: state.summary?.settings?.ai_enabled === true }), "shield"),
-          iconButton("Draft", () => itemPost(item.id, "draft", { body: draft.value }), "send"),
+          item.source_type !== "email" ? iconButton("Draft", () => itemPost(item.id, "draft", { body: draft.value }), "send") : "",
           iconButton("Learn", () => itemPost(item.id, "learn", {}), "brain"),
           iconButton("Mark done", () => itemPost(item.id, "resolve", {}), "check", "primary"),
           iconButton("Block", () => itemPost(item.id, "block", {}), "x", "danger")
@@ -1395,7 +1408,7 @@ function dashboardHtml() {
               : button("Snooze…", () => openSnoozeMenu(item.id), "", false, "clock")
           ])
         ]),
-        draft,
+        item.source_type !== "email" ? draft : "",
         el("details", { class: "disclosure" }, [
           el("summary", { text: "Organize & inspect" }),
           el("div", { class: "disclosure-body" }, [
@@ -1414,6 +1427,66 @@ function dashboardHtml() {
           ])
         ])
       );
+    }
+    function renderMailEditor(item, composing = false) {
+      const actions = state.mailActions || [];
+      let action = actions.find(a => a.id === item?.selected_action) || actions[0];
+      const campaign = action?.metadata?.outreach || item?.metadata?.outreach;
+      const proposal = action?.metadata?.revision_proposal;
+      const panel = el("section", { class: "mail-editor field" });
+      const source = select("mailSource", state.sources.filter(s => s.type === "email" && s.enabled).map(s => s.id), item?.source_id || "");
+      Array.from(source.options).forEach(option => { option.textContent = state.sources.find(s => s.id === option.value)?.name || option.value; });
+      const to = input("mailTo", action?.metadata?.to || item?.author_email || "");
+      const subject = input("mailSubject", proposal?.subject || action?.metadata?.subject || (item ? "Re: " + item.title : ""));
+      const body = el("textarea", { id: "mailBody", "aria-label": "Email message", rows: "16", placeholder: "Write your email…" });
+      body.value = proposal?.body || action?.body || "";
+      const immutable = action && (["executing", "execution_uncertain", "rejected"].includes(action.status) || (action.status === "executed" && action.type === "send_response"));
+      if (campaign || immutable) to.disabled = true;
+      if (immutable) { subject.disabled = true; body.disabled = true; }
+      let dirty = !action, busy = false;
+      const notice = el("div", { class: "muted", role: "status", text: campaign ? "Campaign draft · Edits are saved for copy review. Sending is disabled for this campaign." : action?.status === "executed" && action.type === "send_response" ? "Sent" : action ? "Saved draft · " + action.status : "New email" });
+      const send = button("Send email", async () => {
+        if (!action || dirty || busy) return;
+        if (!confirm("Send this saved email to " + to.value + "?\\n\\n" + subject.value)) return;
+        await perform("send", { version: action.version, confirm: true });
+      }, "primary", true, "send");
+      const mailbox = button("Save to mailbox", () => perform("append", { version: action.version, confirm: true }), "", true, "mail");
+      function updateSend() { send.disabled = !action || dirty || busy || campaign || immutable || action.status === "executed"; mailbox.disabled = send.disabled; }
+      [to, subject, body, source].forEach(control => control.addEventListener("input", () => { dirty = true; state.mailDirty = true; notice.textContent = "Unsaved changes"; updateSend(); }));
+      async function perform(command, payload) {
+        busy = true; save.disabled = true; updateSend();
+        try {
+          const result = await api("/api/mail/" + command + (action ? "/" + encodeURIComponent(action.id) : ""), { method: "POST", body: JSON.stringify(payload) });
+          action = { ...result.action, version: result.version }; source.disabled = true; dirty = false; state.mailDirty = false;
+          notice.textContent = command === "send" ? (action.status === "executed" ? "Email sent" : action.result?.error || "Sending blocked by policy. Review Policies and the source allowed actions.") : command === "append" ? (action.status === "executed" ? "Saved to mailbox" : action.result?.error || "Mailbox save blocked") : campaign ? "Proposal saved for campaign copy review" : "Draft saved";
+          if (result.item) { state.selectedItem = result.item; state.selectedItemId = result.item.id; }
+          state.summary = await api("/api/summary"); await resetItems(); renderShell(); renderItems();
+          if (command === "send" && action.status === "executed") { to.disabled = true; subject.disabled = true; body.disabled = true; }
+        } catch (error) { notice.textContent = error.message; }
+        finally { busy = false; save.disabled = Boolean(immutable || action?.type === "send_response" && action.status === "executed"); updateSend(); }
+      }
+      const save = button(campaign ? "Save for review" : "Save draft", () => perform(campaign ? "proposal" : action ? "save" : item ? "reply" : "compose", { item_id: item?.id, version: action?.version, source_id: source.value, to: to.value, subject: subject.value, body: body.value }), "", Boolean(immutable), "device-floppy");
+      panel.append(el("h2", { text: campaign ? "Campaign draft" : composing ? "Compose email" : "Email draft" }));
+      if (actions.length > 1) {
+        const picker = select("mailDraft", actions.map(a => a.id), action.id);
+        [...picker.options].forEach(option => { const a = actions.find(a => a.id === option.value); option.textContent = (a.metadata?.subject || "Draft") + " · " + a.status; });
+        picker.addEventListener("change", () => { if (dirty && !confirm("Discard unsaved changes?")) { picker.value = action.id; return; } item.selected_action = picker.value; panel.remove(); renderMailEditor(item); });
+        panel.append(label("Version", picker));
+      }
+      if (!action && !campaign) panel.append(label("From account", source));
+      else panel.append(el("div", { class: "muted", text: "From: " + (state.sources.find(s => s.id === item?.source_id)?.name || item?.source_id || "") }));
+      panel.append(label("To", to), label("Subject", subject), label("Message", body), el("div", { class: "controls" }, [save, campaign ? "" : send]), notice);
+      if (!campaign) panel.append(el("details", { class: "disclosure" }, [el("summary", { text: "Mailbox actions" }), mailbox]));
+      qs("#itemDetail").append(panel);
+      updateSend();
+    }
+    function composeEmail() {
+      if (state.mailDirty && !confirm("Discard unsaved email changes?")) return;
+      state.mailDirty = false;
+      state.selectedItem = null; state.selectedItemId = "__compose__"; state.mailActions = [];
+      state.selectedView = "items"; renderCurrent();
+      qs("#itemDetail").replaceChildren(); qs("#workSurface").replaceChildren();
+      renderMailEditor(null, true); qs("#mailTo").focus();
     }
     function openSnoozeMenu(itemId) {
       const options = [
@@ -2180,6 +2253,8 @@ function dashboardHtml() {
     document.querySelectorAll("[data-command]").forEach((control) => control.addEventListener("click", () => runCommand(control.dataset.command)));
     qs("#closeCommands").addEventListener("click", () => qs("#commandPalette").close());
     qs("#mobileMenuBtn").addEventListener("click", () => document.body.classList.toggle("nav-open"));
+    window.addEventListener("beforeunload", event => { if (state.mailDirty) { event.preventDefault(); event.returnValue = ""; } });
+    qs("#composeBtn").addEventListener("click", composeEmail);
     qs("#refreshBtn").addEventListener("click", () => refreshWithSync().catch((error) => setStatus(error.message)));
     qs("#killSwitch").addEventListener("click", async () => { await api("/api/settings/auto-actions", { method: "POST", body: JSON.stringify({ enabled: !state.summary.settings.auto_actions_enabled }) }); await load(); });
     qs("#searchBox").addEventListener("input", () => { state.sidebarFilter = ""; renderShell(); renderItems(); });

@@ -1,0 +1,64 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { startDashboard } from '../src/dashboard.js';
+import { makeSource } from '../src/models.js';
+import { initStore, saveSources, saveAction, loadAction, savePolicies } from '../src/storage.js';
+
+test('mail editor: compose, version conflicts, approval invalidation, policy blocks, campaign proposals and send replay', async () => {
+ const root = await mkdtemp(join(tmpdir(), 'intake-mail-')); let dashboard;
+ try {
+  await initStore(root); await saveSources(root, [makeSource('email', { id: 'mail', name: 'Test mail' })]);
+  dashboard = await startDashboard(root, { port: 0, token: 'test' });
+  const base = `http://127.0.0.1:${dashboard.port}`;
+  const post = async (path, body) => { const r = await fetch(base + path, { method:'POST', headers:{'x-intake-token':'test','content-type':'application/json'}, body:JSON.stringify(body) }); return { status:r.status, ...await r.json() }; };
+  const fields = { source_id:'mail', to:'test@example.com', subject:'Test subject', body:'Test message' };
+  assert.equal((await post('/api/mail/compose', {...fields, to:'bad\r\nBcc: bad@example.com'})).status,400);
+  let draft = await post('/api/mail/compose', fields); assert.equal(draft.status,200);
+  const id = draft.action.id;
+  const reply = await post('/api/mail/reply', {...fields, item_id:draft.item.id});
+  assert.equal(reply.action.intake_item_id,draft.item.id);
+  assert.equal(reply.action.metadata.composed,false);
+  assert.equal((await post('/api/mail/save/'+id, {...fields,version:'stale'})).status,409);
+  await post('/api/actions/'+id+'/approve', {});
+  assert.equal((await post('/api/mail/save/'+id, {...fields,version:draft.version})).status,409);
+  const get = await fetch(base+'/api/items/'+draft.item.id+'/mail', { headers:{'x-intake-token':'test'} });
+  const current = (await get.json()).actions.find(a => a.id === id);
+  draft = await post('/api/mail/save/'+id, {...fields,version:current.version,body:'Edited'});
+  assert.equal(draft.action.approved_by,null); assert.equal(draft.action.status,'needs_review');
+  assert.equal((await post('/api/mail/send/'+id,{version:draft.version})).status,400);
+  let blocked = await post('/api/mail/send/'+id,{version:draft.version,confirm:true});
+  assert.equal(blocked.action.status,'blocked');
+  // Local demo execution exercises the complete send state machine without SMTP.
+  await savePolicies(root,[{id:'test',allowed_actions:['send_response'],blocked_actions:[],requires_human_review:true}]);
+  await saveAction(root,{...blocked.action, metadata:{...blocked.action.metadata,demo_seed_id:'mail-test'}});
+  let loaded = await (await fetch(base+'/api/items/'+draft.action.intake_item_id+'/mail',{headers:{'x-intake-token':'test'}})).json();
+  const sent = await post('/api/mail/send/'+id,{version:loaded.actions.find(a => a.id === id).version,confirm:true});
+  assert.equal(sent.action.status,'executed');
+  assert.equal((await post('/api/mail/send/'+id,{version:loaded.actions.find(a => a.id === id).version,confirm:true})).status,409);
+  assert.equal((await post('/api/mail/send/'+id,{version:sent.version,confirm:true})).status,400);
+  const campaign = {...await loadAction(root,id),type:'draft_response',metadata:{outreach:{campaign_id:'test'},subject:'Original'}};
+  await saveAction(root,campaign);
+  loaded = await (await fetch(base+'/api/items/'+campaign.intake_item_id+'/mail',{headers:{'x-intake-token':'test'}})).json();
+  const v = loaded.actions.find(a => a.id === id).version;
+  assert.equal((await post('/api/mail/send/'+id,{version:v,confirm:true})).status,400);
+  const proposal = await post('/api/mail/proposal/'+id,{version:v,subject:'Suggested subject',body:'Suggested copy'});
+  assert.equal(proposal.action.body,campaign.body);
+  assert.equal(proposal.action.metadata.revision_proposal.status,'awaiting_copy_review');
+  assert.equal(proposal.action.metadata.revision_proposal.body,'Suggested copy');
+  await savePolicies(root,[{id:'test',allowed_actions:['append_remote_draft'],blocked_actions:[],requires_human_review:true}]);
+  const mailboxDraft = await post('/api/mail/compose',fields);
+  await saveAction(root,{...mailboxDraft.action,metadata:{...mailboxDraft.action.metadata,demo_seed_id:'append-test'}});
+  const mailboxActions = await (await fetch(base+'/api/items/'+mailboxDraft.item.id+'/mail',{headers:{'x-intake-token':'test'}})).json();
+  const appended = await post('/api/mail/append/'+mailboxDraft.action.id,{version:mailboxActions.actions[0].version,confirm:true});
+  assert.equal(appended.action.status,'executed');
+  assert.equal(appended.action.type,'draft_response');
+  const revision = await post('/api/mail/save/'+appended.action.id,{...fields,body:'A revised mailbox draft',version:appended.version});
+  assert.notEqual(revision.action.id,appended.action.id);
+  assert.equal(revision.action.intake_item_id,mailboxDraft.item.id);
+  assert.equal(revision.action.metadata.previous_draft_id,appended.action.id);
+  assert.equal((await loadAction(root,appended.action.id)).body,fields.body);
+ } finally { if(dashboard) await new Promise(r=>dashboard.server.close(r)); await rm(root,{recursive:true,force:true}); }
+});
