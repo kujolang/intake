@@ -26,7 +26,9 @@ Source -> Adapter -> Raw payload -> IntakeItem -> Rules/Safety -> Queue -> Draft
 
 ## Release scope
 
-Use Intake as a local operator tool and a reference for source adapters. The dashboard binds to localhost and requires a token. Outbound actions pass through policy and approval checks; direct email sending is blocked by default.
+Use Intake as a local operator tool and a reference for source adapters. New webhook sources default to port 8766. Existing source port settings take precedence.
+
+The dashboard binds to localhost and requires a token. Outbound actions pass through policy and approval checks; direct email sending is blocked by default.
 
 The app includes backups, retention, source health checks, redacted logs, bounded input processing, and recovery for interrupted local writes. Those checks do not establish readiness for a shared enterprise deployment. Validate live providers, infrastructure, access controls, and recovery requirements for your environment; see the [readiness guide](docs/next-production-readiness-sweep.md).
 
@@ -87,7 +89,7 @@ intake eval run
 Start the dashboard:
 
 ```sh
-intake dashboard --port 8787
+intake dashboard --port 8788
 ```
 
 The dashboard binds to `127.0.0.1`, prints a tokenized local URL, captures that launch token into session storage, removes it from the browser URL, and uses the same `.intake/` storage, policy, action, learning, and audit-log workflow as the CLI. Set `INTAKE_DASHBOARD_TOKEN` or pass `--token` if you want a stable local token. Non-local dashboard binding requires `--allow-non-local`, TLS cert/key options, and an explicit token with at least 20 characters.

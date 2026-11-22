@@ -93,13 +93,13 @@ Default policy blocks direct sends and requires human approval for outbound work
 ## 5. Run The Dashboard
 
 ```sh
-node bin/intake.js dashboard --port 8787
+node bin/intake.js dashboard --port 8788
 ```
 
 The dashboard prints a tokenized local URL:
 
 ```text
-Dashboard: http://127.0.0.1:8787/?token=...
+Dashboard: http://127.0.0.1:8788/?token=...
 ```
 
 Dashboard defaults:
@@ -113,7 +113,7 @@ For stable local dashboard URLs, set:
 
 ```sh
 export INTAKE_DASHBOARD_TOKEN="a-long-local-development-token"
-node bin/intake.js dashboard --port 8787
+node bin/intake.js dashboard --port 8788
 ```
 
 ## 6. Repository Layout

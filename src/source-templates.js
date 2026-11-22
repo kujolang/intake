@@ -31,7 +31,7 @@ export const SOURCE_TEMPLATES = [
     name: "GitHub Webhook",
     description: "GitHub issue and pull request webhook intake.",
     defaults: {
-      port: 8765,
+      port: 8766,
       path: "/webhook/github",
       queue: "engineering",
       password_env: "INTAKE_GITHUB_WEBHOOK_TOKEN"
@@ -43,7 +43,7 @@ export const SOURCE_TEMPLATES = [
     name: "Jira Webhook",
     description: "Jira issue webhook intake.",
     defaults: {
-      port: 8765,
+      port: 8766,
       path: "/webhook/jira",
       queue: "client-work",
       password_env: "INTAKE_JIRA_WEBHOOK_TOKEN"
@@ -55,7 +55,7 @@ export const SOURCE_TEMPLATES = [
     name: "Linear Webhook",
     description: "Linear issue webhook intake.",
     defaults: {
-      port: 8765,
+      port: 8766,
       path: "/webhook/linear",
       queue: "engineering",
       password_env: "INTAKE_LINEAR_WEBHOOK_TOKEN"
@@ -67,7 +67,7 @@ export const SOURCE_TEMPLATES = [
     name: "ClickUp Webhook",
     description: "ClickUp task webhook intake.",
     defaults: {
-      port: 8765,
+      port: 8766,
       path: "/webhook/clickup",
       queue: "client-work",
       password_env: "INTAKE_CLICKUP_WEBHOOK_TOKEN"

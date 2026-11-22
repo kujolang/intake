@@ -755,7 +755,7 @@ function help() {
     "  intake purge items [--item ID | --source ID | --status STATUS | --queue QUEUE | --before DATE] [--dry-run | --force]",
     "  intake store recover [--force]  (repair indexes after an exited writer)",
     "  intake doctor",
-    "  intake dashboard [--port 8787] [--token TOKEN]",
+    "  intake dashboard [--port 8788] [--token TOKEN]",
     "  intake demo seed email",
     "  intake demo clear",
     "  intake eval run",

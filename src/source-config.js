@@ -26,7 +26,7 @@ export function buildSourceFromInput(input, existing = null) {
   } else if (type === "file") {
     config.path = input.path ?? config.path ?? "";
   } else if (["webhook", "github", "jira", "linear", "clickup"].includes(type)) {
-    config.port = numberInput(input.port ?? config.port ?? 8765, "webhook port", { min: 1, max: 65535, integer: true });
+    config.port = numberInput(input.port ?? config.port ?? 8766, "webhook port", { min: 1, max: 65535, integer: true });
     config.path = input.path ?? config.path ?? "";
     if (input.token) config.token = input.token;
     const apiTokenRef = input.api_token_ref || input.apiTokenRef || (input.api_token_env || input.apiTokenEnv ? `env:${input.api_token_env || input.apiTokenEnv}` : null);

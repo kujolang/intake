@@ -62,7 +62,7 @@ node bin/intake.js items --source support-email
 ## 6. Review In Dashboard
 
 ```sh
-node bin/intake.js dashboard --port 8787
+node bin/intake.js dashboard --port 8788
 ```
 
 Open the printed URL, select the item, classify it, and create a draft.

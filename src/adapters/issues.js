@@ -66,7 +66,7 @@ export async function normalizeIssuePayload(root, source, payload, options = {})
 }
 
 export async function startIssueWebhookServer(root, source, options = {}) {
-  const port = Number(options.port ?? source.config?.port ?? 8765);
+  const port = Number(options.port ?? source.config?.port ?? 8766);
   const path = options.path || source.config?.path || `/webhook/${source.type}`;
   const expectedToken = source.secret_ref ? resolveSecretRef(source.secret_ref, source.id) : source.config?.token;
   if (!expectedToken) throw new Error(`${source.type} source ${source.id} requires a token or env secret_ref`);

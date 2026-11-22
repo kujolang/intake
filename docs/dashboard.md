@@ -3,7 +3,7 @@
 Start:
 
 ```sh
-intake dashboard --port 8787
+intake dashboard --port 8788
 ```
 
 The dashboard is local-only by default:

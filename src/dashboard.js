@@ -85,7 +85,7 @@ export async function startDashboard(root, options = {}) {
   if (!localOnly && tokenSource === "runtime") {
     throw new Error("non-local dashboard binding requires --token or INTAKE_DASHBOARD_TOKEN");
   }
-  const port = Number(options.port ?? 8787);
+  const port = Number(options.port ?? 8788);
   let activeToken = options.token || process.env.INTAKE_DASHBOARD_TOKEN || randomBytes(24).toString("base64url");
   if (!localOnly && activeToken.length < 20) {
     throw new Error("non-local dashboard token must be at least 20 characters");
@@ -1773,7 +1773,7 @@ function dashboardHtml() {
           sourceApiTokenEnv: "INTAKE_GITHUB_API_TOKEN",
           sourceWebhookPath: "/webhook/github",
           sourceRepository: "owner/repo",
-          sourcePort: "8765"
+          sourcePort: "8766"
         },
         manual: {
           sourceType: "manual",
@@ -1855,7 +1855,7 @@ function dashboardHtml() {
           label("SMTP port", input("sourceSmtpPort", smtp.port || defaults.sourceSmtpPort || 465)),
           label("From", input("sourceFrom", cfg.from || cfg.username || defaults.sourceFrom || "")),
           label("File path", input("sourcePath", cfg.path || "")),
-          label("Webhook port", input("sourcePort", cfg.port || defaults.sourcePort || 8765)),
+          label("Webhook port", input("sourcePort", cfg.port || defaults.sourcePort || 8766)),
           label("Webhook path", input("sourceWebhookPath", cfg.path || defaults.sourceWebhookPath || "")),
           label("Workspace URL", input("sourceWorkspaceUrl", cfg.workspace_url || "")),
           label("Provider repo", input("sourceRepository", cfg.repository || defaults.sourceRepository || "")),
