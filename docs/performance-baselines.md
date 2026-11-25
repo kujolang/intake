@@ -58,3 +58,11 @@ npm run bench -- --items 100 --logs 100000 --fileRows 0 --actions 0 --learnings 
 - Warm dashboard item, action, learning, summary, and approval-audit reads use compact indexes and now stay below 125 ms in these local baseline runs.
 - Warm item, action, and learning index reads preserve write-time sort order instead of re-sorting every request; keep rebuild and upsert paths sorted when changing index storage.
 - The 100,000 audit-log write baseline remains intentionally separate because it measures append-only log throughput rather than dashboard read latency.
+
+## Dashboard read benchmark
+
+Run `node scripts/bench-dashboard-reads.mjs` to measure warm Inbox, Actions, Learnings, and approval-audit requests against a synthetic 3,000-item store. Pass the path to an installed baseline checkout as the first argument to compare both versions against the same fixture. The benchmark checks row counts and matching response hashes, including CSV export, and reports the median and range for each case.
+
+Filtered pages stop scanning the sorted index after collecting the requested matches. Action and learning pages fetch their full records in bounded batches. Approval history applies action filters before loading each remaining item's current source and risk metadata once per request.
+
+See the [November 25, 2026 dashboard performance audit](audits/repository-hardening-2026-11-25-dashboard.md) for the comparison and verification.
