@@ -5,8 +5,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createManualItem } from "../src/adapters/manual.js";
 import { startDashboard } from "../src/dashboard.js";
-import { makeSource } from "../src/models.js";
-import { initStore, listItems, loadItem, loadSources, saveItem, saveSources } from "../src/storage.js";
+import { makeAction, makeSource } from "../src/models.js";
+import { deleteAction, initStore, listItems, loadItem, loadSources, saveAction, saveItem, saveSources } from "../src/storage.js";
 import { classifyAndSave, syncAll } from "../src/workflow.js";
 
 async function withDashboard(fn) {
@@ -23,7 +23,7 @@ async function withDashboard(fn) {
     await saveItem(root, item);
     await classifyAndSave(root, item.id);
     dashboard = await startDashboard(root, { port: 0, token: "test-token" });
-    return await fn(dashboard, item);
+    return await fn(dashboard, item, root);
   } finally {
     if (dashboard) await new Promise((resolve) => dashboard.server.close(resolve));
     await rm(root, { recursive: true, force: true });
@@ -293,7 +293,7 @@ test("dashboard items API supports paged list reads", async () => {
     await saveSources(root, [source]);
     for (let index = 0; index < 25; index += 1) {
       const item = await createManualItem(root, source, { title: `Paged item ${index}`, body: "Pagination dashboard test" });
-      await saveItem(root, item);
+      await saveItem(root, { ...item, tags: index % 3 === 0 ? ["paged"] : [] });
     }
     dashboard = await startDashboard(root, { port: 0, token: "test-token" });
     const base = `http://${dashboard.host}:${dashboard.port}`;
@@ -304,6 +304,17 @@ test("dashboard items API supports paged list reads", async () => {
     assert.equal(first.items.length, 20);
     assert.equal(second.items.length, 5);
     assert.notEqual(first.items[0].id, second.items[0].id);
+
+    const matching = [...first.items, ...second.items].filter((item) => item.tags.includes("paged"));
+    for (const [query, expected] of [
+      ["&offset=2&limit=3", matching.slice(2, 5)],
+      ["&offset=7", matching.slice(7)],
+      ["&limit=0", []],
+      ["&offset=12&limit=4", []]
+    ]) {
+      const { items } = await (await fetch(`${base}/api/items?tag=paged${query}`, { headers })).json();
+      assert.deepEqual(items, expected);
+    }
   } finally {
     if (dashboard) await new Promise((resolve) => dashboard.server.close(resolve));
     await rm(root, { recursive: true, force: true });
@@ -349,6 +360,62 @@ test("dashboard previews policy and summarizes approval audit", async () => {
     const exported = await (await fetch(`${base}/api/approval-audit?operator=dashboard&format=csv`, { headers })).json();
     assert.match(exported.csv, /^action_id,item_id,source_id,operator,action_type,status,risk_level,decision_at,executed_at/m);
     assert.match(exported.csv, /draft_response/);
+  });
+});
+
+test("approval audit uses current item metadata and reads only actions matching action filters", async () => {
+  await withDashboard(async (dashboard, item, root) => {
+    const base = new URL(dashboard.url).origin;
+    const headers = { "x-intake-token": dashboard.token };
+    const get = (path) => fetch(`${base}/api/${path}`, { headers });
+    await saveItem(root, { ...item, source_id: "new-source", risk_level: "critical" }, { rebuildIndex: false });
+    await writeFile(join(root, "items", "unreadable.json"), "{");
+    const saveApproved = (id, itemId, operator, approvedAt) => saveAction(root, {
+      ...makeAction({
+        id, intake_item_id: itemId, source_id: "old-source", approved_by: operator,
+        created_at: approvedAt, approved_at: approvedAt, status: "approved", type: "draft_response", body: id
+      }),
+      risk_level: null
+    });
+    await saveApproved("old", item.id, "operator", "2026-01-01T12:00:00.000Z");
+    await saveApproved("recent", item.id, "operator", "2026-01-02T12:00:00.000Z");
+    await saveApproved("missing", "missing-item", "operator", "2026-01-03T12:00:00.000Z");
+    await saveApproved("unrelated", "unreadable", "other", "2026-01-04T12:00:00.000Z");
+
+    const response = await get("approval-audit?operator=operator&format=csv");
+    assert.equal(response.status, 200);
+    const audit = await response.json();
+    assert.deepEqual(audit.rows.map(({ action_id, source_id, risk_level }) => [action_id, source_id, risk_level]), [
+      ["missing", "old-source", ""], ["recent", "new-source", "critical"], ["old", "new-source", "critical"]
+    ]);
+    assert.deepEqual(audit.approvals.by_source, { "old-source": 1, "new-source": 2 });
+    assert.match(audit.csv, /recent,.*new-source,operator,draft_response,approved,critical/);
+    const narrowed = await (await get("approval-audit?operator=operator&source_id=new-source&date_to=2026-01-01")).json();
+    assert.deepEqual(narrowed.rows.map((row) => row.action_id), ["old"]);
+    assert.equal((await get("approval-audit?operator=other")).status, 500);
+  });
+});
+
+test("action hydration preserves page order and skips missing files within the selected page", async () => {
+  await withDashboard(async (dashboard, item, root) => {
+    const base = new URL(dashboard.url).origin;
+    const headers = { "x-intake-token": dashboard.token };
+    const get = (query) => fetch(`${base}/api/actions?${query}`, { headers });
+    for (let index = 1; index <= 10; index += 1) {
+      await saveAction(root, makeAction({
+        id: `action-${index}`, intake_item_id: item.id, type: "draft_response",
+        body: `Action body ${index}`, created_at: new Date(Date.UTC(2026, 0, index)).toISOString()
+      }));
+    }
+    await deleteAction(root, "action-9", { rebuildIndex: false });
+    const first = await (await get("status=proposed&limit=3")).json();
+    assert.deepEqual(first.actions.map(({ id, body }) => [id, body]), [
+      ["action-10", "Action body 10"], ["action-8", "Action body 8"]
+    ]);
+    const all = await (await get("status=proposed")).json();
+    assert.deepEqual(all.actions.map(({ id }) => id), [
+      "action-10", "action-8", "action-7", "action-6", "action-5", "action-4", "action-3", "action-2", "action-1"
+    ]);
   });
 });
 

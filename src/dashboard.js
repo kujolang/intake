@@ -16,7 +16,7 @@ import { initStore, listActionIndex, listActions, listItemIndex, listLearningInd
 import { evaluatePolicy } from "./policy.js";
 import { appendSourceSyncHistory, appendSourceTestHistory } from "./source-history.js";
 import { approveAction, classifyAndSave, createLearning, proposeDraft, rejectAction, runAction, setAutoActions, syncAll } from "./workflow.js";
-import { isoNow, parseCsv, readStreamText, timingSafeEqualString, uniq } from "./util.js";
+import { isoNow, mapInReadBatches, parseCsv, readStreamText, timingSafeEqualString, uniq } from "./util.js";
 import { recordRequestError, requestErrorPayload } from "./request-errors.js";
 
 const LOGS = ["sync", "normalize", "classify", "policy", "actions", "audit", "errors"];
@@ -452,34 +452,39 @@ function parseRuleList(value) {
 async function approvalAudit(root, url) {
   const filters = approvalAuditFilters(url);
   const actions = await listActionIndex(root);
-  const items = new Map();
-  const rows = [];
+  const candidates = [];
+  const dateTo = filters.date_to ? auditDateUpperBound(filters.date_to) : null;
   for (const action of actions) {
     if (!action.approved_by && !action.approved_at) continue;
-    let item = null;
-    if (action.intake_item_id) {
-      if (!items.has(action.intake_item_id)) items.set(action.intake_item_id, await loadItem(root, action.intake_item_id));
-      item = items.get(action.intake_item_id);
-    }
-    const decisionAt = action.approved_at || action.executed_at || action.created_at || "";
     const row = {
       action_id: action.id,
       item_id: action.intake_item_id || "",
-      source_id: item?.source_id || action.source_id || "unknown",
+      source_id: action.source_id || "unknown",
       operator: action.approved_by || "unknown",
       action_type: action.type || "unknown",
       status: action.status || "unknown",
-      risk_level: action.risk_level || item?.risk_level || "",
-      decision_at: decisionAt,
+      risk_level: action.risk_level || "",
+      decision_at: action.approved_at || action.executed_at || action.created_at || "",
       executed_at: action.executed_at || ""
     };
-    if (matchesApprovalAuditFilters(row, filters)) rows.push(row);
+    if (matchesApprovalAuditFilters(row, filters, dateTo)) candidates.push(row);
   }
+  const ids = uniq(candidates.map((row) => row.item_id));
+  const items = new Map(await mapInReadBatches(ids, async (id) => {
+    const item = await loadItem(root, id);
+    return [id, { source_id: item?.source_id, risk_level: item?.risk_level }];
+  }));
+  const rows = [];
   const byOperator = Object.create(null);
   const byType = Object.create(null);
   const bySource = Object.create(null);
   const byStatus = Object.create(null);
-  for (const row of rows) {
+  for (const row of candidates) {
+    const item = items.get(row.item_id);
+    row.source_id = item?.source_id || row.source_id;
+    if (filters.source_id && row.source_id !== filters.source_id) continue;
+    row.risk_level ||= item?.risk_level || "";
+    rows.push(row);
     byOperator[row.operator] = (byOperator[row.operator] || 0) + 1;
     byType[row.action_type] = (byType[row.action_type] || 0) + 1;
     bySource[row.source_id] = (bySource[row.source_id] || 0) + 1;
@@ -512,13 +517,12 @@ function approvalAuditFilters(url) {
   };
 }
 
-function matchesApprovalAuditFilters(row, filters) {
+function matchesApprovalAuditFilters(row, filters, dateTo) {
   if (filters.operator && row.operator !== filters.operator) return false;
   if (filters.action_type && row.action_type !== filters.action_type) return false;
-  if (filters.source_id && row.source_id !== filters.source_id) return false;
   if (filters.status && row.status !== filters.status) return false;
   if (filters.date_from && row.decision_at && row.decision_at < filters.date_from) return false;
-  if (filters.date_to && row.decision_at && row.decision_at > auditDateUpperBound(filters.date_to)) return false;
+  if (dateTo && row.decision_at && row.decision_at > dateTo) return false;
   return true;
 }
 

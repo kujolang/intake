@@ -4,7 +4,7 @@ import { basename, join, relative, resolve, sep } from "node:path";
 import { DEFAULT_INTAKE_DIR, LOG_NAMES, REQUIRED_DIRS, STORAGE_SCHEMA_VERSION, VERSION } from "./constants.js";
 import { runMigrations } from "./migrations.js";
 import { redact } from "./redaction.js";
-import { assertSafeId, dateOnly, isoNow, readJson, serializeWrite, writeJsonAtomic, writeTextAtomic } from "./util.js";
+import { assertSafeId, dateOnly, isoNow, mapInReadBatches, readJson, serializeWrite, writeJsonAtomic, writeTextAtomic } from "./util.js";
 
 export function resolveIntakeDir(flags = {}) {
   return flags.dir || process.env.INTAKE_DIR || DEFAULT_INTAKE_DIR;
@@ -197,13 +197,14 @@ async function listItemsLocked(root, filters = {}) {
     return [];
   }
   const items = [];
+  const criteria = filterCriteria(filters);
   for (const name of names.sort()) {
     if (!name.endsWith(".json")) continue;
     const missing = Symbol("missing item");
     const item = await readJson(join(dir, name), missing);
     if (item === missing) continue;
     validateStoredItem(item, name.slice(0, -5));
-    if (matchesFilters(item, filters)) items.push(item);
+    if (matchesFilters(item, criteria)) items.push(item);
   }
   return paginateRows(items.sort(sortItems), filters);
 }
@@ -221,7 +222,7 @@ async function listItemIndexLocked(root, filters = {}) {
     await rebuildItemIndex(root);
     return listItemIndex(root, filters);
   }
-  return paginateRows(rows.filter((row) => matchesFilters(row, filters)), filters);
+  return selectIndexPage(rows, filters);
 }
 
 export async function listItemDedupeKeys(root) {
@@ -345,21 +346,18 @@ async function listRecords(dir, filters) {
     return [];
   }
   const rows = [];
+  const criteria = filterCriteria(filters);
   for (const name of names.sort()) {
     if (!name.endsWith(".json")) continue;
     const row = await readJson(join(dir, name), null);
-    if (row && matchesFilters(row, filters)) rows.push(row);
+    if (row && matchesFilters(row, criteria)) rows.push(row);
   }
   return paginateRows(rows.sort(sortRecords), filters);
 }
 
 async function hydrateRecords(root, collection, ids, label) {
-  const rows = [];
-  for (const id of ids) {
-    const row = await readJson(recordPath(root, collection, id, label), null);
-    if (row) rows.push(row);
-  }
-  return rows;
+  const rows = await mapInReadBatches(ids, (id) => readJson(recordPath(root, collection, id, label), null));
+  return rows.filter(Boolean);
 }
 
 async function listRecordIndex(root, collection, filters, rebuild) {
@@ -368,13 +366,32 @@ async function listRecordIndex(root, collection, filters, rebuild) {
     await rebuild(root);
     return listRecordIndex(root, collection, filters, rebuild);
   }
-  return paginateRows(rows.filter((row) => matchesFilters(row, filters)), filters);
+  return selectIndexPage(rows, filters);
 }
 
-function matchesFilters(row, filters) {
-  for (const [key, expected] of Object.entries(filters)) {
-    if (["limit", "offset"].includes(key)) continue;
-    if (expected === undefined || expected === null || expected === "") continue;
+function filterCriteria(filters) {
+  return Object.entries(filters).filter(([key, expected]) =>
+    key !== "limit" && key !== "offset" && expected !== undefined && expected !== null && expected !== ""
+  );
+}
+
+function selectIndexPage(rows, filters) {
+  const criteria = filterCriteria(filters);
+  if (!criteria.length) return paginateRows(rows, filters);
+  let skip = parseListBound(filters.offset, 0);
+  const limit = filters.limit === undefined ? Infinity : parseListBound(filters.limit, 100);
+  const page = [];
+  for (const row of rows) {
+    if (page.length === limit) break;
+    if (!matchesFilters(row, criteria)) continue;
+    if (skip > 0) skip -= 1;
+    else page.push(row);
+  }
+  return page;
+}
+
+function matchesFilters(row, criteria) {
+  for (const [key, expected] of criteria) {
     if (key === "tag") {
       if (!Array.isArray(row.tags) || !row.tags.includes(expected)) return false;
     } else if (key === "view") {

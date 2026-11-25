@@ -87,6 +87,21 @@ export async function readJson(path, fallback) {
   }
 }
 
+// Limit simultaneous full-record reads and wait for the batch before releasing
+// the caller's store lock, even when a read fails.
+export async function mapInReadBatches(values, read) {
+  const batchSize = 8;
+  const result = [];
+  for (let offset = 0; offset < values.length; offset += batchSize) {
+    const batch = await Promise.allSettled(values.slice(offset, offset + batchSize).map(async (value) => read(value)));
+    for (const entry of batch) {
+      if (entry.status === "rejected") throw entry.reason;
+      result.push(entry.value);
+    }
+  }
+  return result;
+}
+
 export async function writeJsonAtomic(path, value, options = {}) {
   return writeTextAtomic(path, `${JSON.stringify(value, null, 2)}\n`, options);
 }
