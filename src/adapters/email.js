@@ -172,7 +172,7 @@ async function itemFromMessage(root, source, message) {
     }
   });
   const attachments = await attachmentMetadata(root, source, temp.id, parsed.attachments || []);
-  const rawPath = await storeRaw(root, "email", source.id, temp.id, "eml", message.source.toString("utf8"));
+  const rawPath = await storeRaw(root, "email", source.id, temp.id, "eml", message.source);
   return { ...temp, attachments, raw_payload_path: rawPath };
 }
 

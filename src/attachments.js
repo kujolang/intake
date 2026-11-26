@@ -1,9 +1,10 @@
 import { withStoreLock } from "./store-lock.js";
 import { constants } from "node:fs";
-import { mkdir, open, realpath, writeFile } from "node:fs/promises";
-import { basename, extname, join, relative, resolve, sep } from "node:path";
-import { assertSafeId, shortHash } from "./util.js";
+import { open, realpath } from "node:fs/promises";
+import { basename, extname, join, resolve, sep } from "node:path";
+import { assertSafeId, shortHash, writeTextAtomic } from "./util.js";
 import { readBounded, resourceLimit } from "./resource-limits.js";
+import { rawStorePath } from "./raw-paths.js";
 
 const MAX_ATTACHMENT_DOWNLOAD_BYTES = 25 * 1024 * 1024;
 
@@ -29,10 +30,11 @@ async function attachmentMetadataLocked(root, source, itemId, attachments = []) 
     const safeItem = assertSafeId(itemId, "item id");
     const safeSource = assertSafeId(source.id, "source id");
     const fileName = `${safeItem}-${shortHash(`${base.filename}:${base.checksum}`, 16)}.${extension}`;
-    const target = join(root, "raw", "attachments", safeSource, fileName);
-    await mkdir(join(root, "raw", "attachments", safeSource), { recursive: true });
-    await writeFile(target, attachment.content);
-    rows.push({ ...base, quarantined: true, quarantine_path: relative(root, target) });
+    const relPath = join("raw", "attachments", safeSource, fileName);
+    const target = await rawStorePath(root, relPath, { createParents: true });
+    if (!target) throw new Error("unsafe attachment quarantine path");
+    await writeTextAtomic(target, attachment.content, { mode: 0o600 });
+    rows.push({ ...base, quarantined: true, quarantine_path: relPath });
   }
   return rows;
 }

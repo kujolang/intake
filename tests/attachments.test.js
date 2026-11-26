@@ -15,7 +15,7 @@ test("email attachments can be quarantined while item stores metadata only", asy
   try {
     await initStore(root);
     await mkdir(drop, { recursive: true });
-    await writeFile(join(drop, "message.eml"), [
+    const raw = Buffer.from([
       "From: Client <client@example.test>",
       "To: Support <support@example.test>",
       "Subject: Attachment test",
@@ -30,10 +30,11 @@ test("email attachments can be quarantined while item stores metadata only", asy
       "Content-Type: text/plain; name=note.txt",
       "Content-Disposition: attachment; filename=note.txt",
       "",
-      "quarantined attachment body",
+      "quarantined attachment body\xFF",
       "--frontier--",
       ""
-    ].join("\r\n"), "utf8");
+    ].join("\r\n"), "latin1");
+    await writeFile(join(drop, "message.eml"), raw);
 
     const source = makeSource("file", {
       id: "file-mail",
@@ -47,6 +48,7 @@ test("email attachments can be quarantined while item stores metadata only", asy
     assert.equal(item.attachments[0].filename, "note.txt");
     assert.equal(item.attachments[0].quarantined, true);
     assert.equal("content" in item.attachments[0], false);
+    assert.deepEqual(await readFile(join(root, item.raw_payload_path)), raw);
     const quarantinePath = join(root, item.attachments[0].quarantine_path);
     assert.equal(existsSync(quarantinePath), true);
     assert.match(await readFile(quarantinePath, "utf8"), /quarantined attachment body/);

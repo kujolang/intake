@@ -1,10 +1,16 @@
+import { constants as fsConstants } from "node:fs";
 import { withStoreLock } from "./store-lock.js";
-import { appendFile, mkdir, open, readdir, readFile, rm, stat } from "node:fs/promises";
-import { basename, join, relative, resolve, sep } from "node:path";
+import { appendFile, lstat, mkdir, open, readdir, readFile, rm, stat } from "node:fs/promises";
+import { basename, join, resolve } from "node:path";
 import { DEFAULT_INTAKE_DIR, LOG_NAMES, REQUIRED_DIRS, STORAGE_SCHEMA_VERSION, VERSION } from "./constants.js";
 import { runMigrations } from "./migrations.js";
 import { redact } from "./redaction.js";
 import { assertSafeId, dateOnly, isoNow, mapInReadBatches, readJson, serializeWrite, writeJsonAtomic, writeTextAtomic } from "./util.js";
+
+import { rawStorePath } from "./raw-paths.js";
+import { readBounded } from "./resource-limits.js";
+
+const MAX_RAW_PREVIEW_BYTES = 64 * 1024 * 1024;
 
 export function resolveIntakeDir(flags = {}) {
   return flags.dir || process.env.INTAKE_DIR || DEFAULT_INTAKE_DIR;
@@ -433,9 +439,12 @@ async function storeRawLocked(root, area, sourceId, id, extension, content) {
   const safeSource = assertSafeId(sourceId || "unknown", "source id");
   const safeId = assertSafeId(id, "raw id");
   const safeExtension = assertSafeId(extension, "raw extension");
-  const path = join(root, "raw", safeArea, safeSource, `${safeId}.${safeExtension}`);
-  await writeTextAtomic(path, typeof content === "string" ? content : JSON.stringify(content, null, 2));
-  return relative(root, path);
+  const relPath = join("raw", safeArea, safeSource, `${safeId}.${safeExtension}`);
+  const target = await rawStorePath(root, relPath, { createParents: true });
+  if (!target) throw new Error("unsafe raw payload directory");
+  const value = typeof content === "string" || Buffer.isBuffer(content) ? content : JSON.stringify(content, null, 2);
+  await writeTextAtomic(target, value, { mode: 0o600 });
+  return relPath;
 }
 
 export async function readRaw(root, relPath) {
@@ -443,13 +452,21 @@ export async function readRaw(root, relPath) {
 }
 
 async function readRawLocked(root, relPath) {
-  const rootPath = resolve(root);
-  const target = resolve(rootPath, String(relPath || ""));
-  if (!target.startsWith(`${rootPath}${sep}`)) return null;
   try {
-    return await readFile(target, "utf8");
+    const target = await rawStorePath(root, relPath);
+    if (!target || !(await lstat(target)).isFile()) return null;
+    const file = await open(target, fsConstants.O_RDONLY | fsConstants.O_NOFOLLOW | fsConstants.O_NONBLOCK);
+    try {
+      const info = await file.stat();
+      if (!info.isFile()) return null;
+      if (info.size > MAX_RAW_PREVIEW_BYTES) throw new Error("raw payload exceeds the 64 MiB preview limit");
+      const contents = await readBounded(file.createReadStream({ autoClose: false }), MAX_RAW_PREVIEW_BYTES, "raw payload");
+      return contents.toString("utf8");
+    } finally {
+      await file.close();
+    }
   } catch (error) {
-    if (error && error.code === "ENOENT") return null;
+    if (["ENOENT", "ENOTDIR", "ELOOP"].includes(error?.code)) return null;
     throw error;
   }
 }

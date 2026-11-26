@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, open, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -308,6 +308,23 @@ test("storage rejects unsafe ids and raw path traversal", async () => {
     await assert.rejects(() => storeRaw(root, "files", "../outside", "raw-id", "txt", "nope"), /invalid source id/);
     assert.equal(await readRaw(root, "../package.json"), null);
     assert.equal(await readRaw(root, "raw/files/manual/missing.txt"), null);
+  });
+});
+
+test("raw preview reads only regular snapshots and bounds large previews", async () => {
+  await withStore(async (root) => {
+    const relPath = await storeRaw(root, "files", "manual", "payload", "txt", "fixture");
+    assert.equal(await readRaw(root, relPath), "fixture");
+    assert.equal(await readRaw(root, "config/settings.json"), null);
+    assert.equal(await readRaw(root, "raw/files/manual"), null);
+    await symlink(join(root, "config"), join(root, "raw", "files", "linked"));
+    assert.equal(await readRaw(root, "raw/files/linked/settings.json"), null);
+    await assert.rejects(() => storeRaw(root, "files", "linked", "extra", "txt", "fixture"), /unsafe raw payload directory/);
+    assert.equal(existsSync(join(root, "config", "extra.txt")), false);
+    const file = await open(join(root, relPath), "r+");
+    try { await file.truncate(64 * 1024 * 1024 + 1); }
+    finally { await file.close(); }
+    await assert.rejects(() => readRaw(root, relPath), /64 MiB preview limit/);
   });
 });
 

@@ -45,7 +45,7 @@ export async function syncFileSource(root, source) {
     const nativeId = `${name}:${info.mtimeMs}:${info.size}`;
     if (seen.has(nativeId)) continue;
     try {
-      const file = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW);
+      const file = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
       let buffer;
       try {
         const opened = await file.stat();
@@ -139,7 +139,7 @@ async function itemFromEml(root, source, rawId, nativeId, buffer) {
     metadata: { email_headers: Object.fromEntries(parsed.headers || []) }
   });
   const attachments = await attachmentMetadata(root, source, temp.id, parsed.attachments || []);
-  const rawPath = await storeRaw(root, "email", source.id, temp.id, "eml", buffer.toString("utf8"));
+  const rawPath = await storeRaw(root, "email", source.id, temp.id, "eml", buffer);
   return { ...temp, attachments, raw_payload_path: rawPath };
 }
 
