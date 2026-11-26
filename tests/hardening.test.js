@@ -56,6 +56,49 @@ test("empty and nonmatching policies deny execution", () => {
   }
 });
 
+test("reclassification preserves a stored review requirement through an action run", async (t) => {
+  const root = await store(t);
+  await savePolicies(root, [autoPolicy]);
+  await saveSettings(root, { ...(await loadSettings(root)), auto_actions_enabled: true });
+  const item = makeItem({ id: "held", body: "Routine update", status: "queued", policy: { requires_human_review: true } });
+  await saveItem(root, item);
+  const { item: classified } = await classifyAndSave(root, item.id);
+  assert.equal(classified.policy.requires_human_review, true);
+  const action = makeAction({ intake_item_id: item.id, type: "mark_resolved" });
+  await saveAction(root, action);
+  assert.match((await runAction(root, action.id)).result.error, /requires approval/);
+  await approveAction(root, action.id);
+  assert.equal((await runAction(root, action.id)).status, "executed");
+});
+
+test("an AI recommendation against automation requires review", async (t) => {
+  const root = await store(t);
+  const previousFetch = globalThis.fetch;
+  const previousKey = process.env.INTAKE_TEST_REVIEW_KEY;
+  t.after(() => {
+    globalThis.fetch = previousFetch;
+    if (previousKey === undefined) delete process.env.INTAKE_TEST_REVIEW_KEY;
+    else process.env.INTAKE_TEST_REVIEW_KEY = previousKey;
+  });
+  process.env.INTAKE_TEST_REVIEW_KEY = "fixture";
+  globalThis.fetch = async () => Response.json({
+    choices: [{ message: { content: JSON.stringify({ human_review_required: false, auto_action_allowed: false }) } }]
+  });
+  await saveSettings(root, {
+    ...(await loadSettings(root)),
+    ai_enabled: true,
+    ai_provider: "openai-compatible",
+    ai_base_url: "https://provider.example/v1",
+    ai_api_key_env: "INTAKE_TEST_REVIEW_KEY"
+  });
+  const item = makeItem({ id: "recommendation", body: "Routine update" });
+  await saveItem(root, item);
+  const result = await classifyAndSave(root, item.id, { ai: true });
+  assert.equal(result.ai.human_review_required, false);
+  assert.equal(result.item.status, "needs_review");
+  assert.equal(policy(result.item).auto_execute_allowed, false);
+});
+
 test("proposed rules are inactive and reclassification refreshes rule vetoes", () => {
   const item = makeItem({ body: "hello", policy: { blocked_actions: ["old"] } });
   const rules = [{ id: "test", status: "proposed", match_any: ["hello"], queue: "engineering", blocked_actions: ["send_response"] }];

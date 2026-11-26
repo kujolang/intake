@@ -146,7 +146,7 @@ async function classifyItemAndSave(root, item, options, rules, settings) {
     ...ruled,
     safety_flags: uniq([...(ruled.safety_flags || []), ...safety.flags]),
     risk_level: safety.risk_level,
-    policy: { ...ruled.policy, requires_human_review: safety.requires_human_review },
+    policy: { ...ruled.policy, requires_human_review: ruled.policy?.requires_human_review === true || safety.requires_human_review },
     status: safety.requires_human_review ? "needs_review" : ruled.status
   };
 
@@ -180,7 +180,7 @@ function mergeAiResult(item, ai) {
   }
   if (typeof ai.confidence === "number") next.ai_confidence = ai.confidence;
   if (ai.suggested_action) next.suggested_actions = uniq([...(next.suggested_actions || []), ai.suggested_action]);
-  if (ai.human_review_required) {
+  if (ai.human_review_required === true || ai.auto_action_allowed === false) {
     next.policy = { ...next.policy, requires_human_review: true };
     if (next.status !== "resolved") next.status = "needs_review";
   }
