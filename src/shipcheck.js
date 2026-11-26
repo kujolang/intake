@@ -149,7 +149,8 @@ function ciWorkflowCheck(workflowText) {
     workflowText.includes("actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1") ? null : "workflow must use the Node 24 setup-node action runtime",
     workflowText.includes("npm ci") ? null : "workflow must run npm ci",
     workflowText.includes("npm run release:check") ? null : "workflow must run the complete release gate",
-    workflowText.includes("22.23.4") && workflowText.includes("24.22.1") ? null : "workflow must cover patched Node 22.23.4 and 24.22.1"
+    ["22.23.5", "24.22.3", "26.13.1"].every((version) => workflowText.includes(version))
+      ? null : "workflow must cover patched Node 22.23.5, 24.22.3, and 26.13.1"
   ].filter(Boolean);
   return check("ci-workflow", failures.length === 0, failures.join("; ") || "CI workflow is wired");
 }

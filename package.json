@@ -34,7 +34,7 @@
     "intake": "bin/intake.js"
   },
   "engines": {
-    "node": ">=22.23.4 <23 || >=24.22.1 <25 || >=26.12.1"
+    "node": ">=22.23.5 <23 || >=24.22.3 <25 || >=26.13.1"
   },
   "scripts": {
     "test": "node --test tests/*.test.js",

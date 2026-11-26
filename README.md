@@ -6,7 +6,7 @@
 
 Kujo Intake collects email, webhooks, file drops, and manual input into a local work queue. It keeps the original payload, applies routing rules, and checks policy before running an action. Operators can review drafts, approve actions, and export learnings to Strata or TotalRecall-compatible files.
 
-Version **0.3.0** is a GitHub source release. It runs on Node.js 22.23.4+, 24.22.1+, or 26.12.1+ (supported release lines) and stores state in local files. Read the [release notes](docs/releases/0.3.0.md) before upgrading an existing checkout.
+Version **0.3.0** is a GitHub source release. It runs on Node.js 22.23.5+, 24.22.3+, or 26.13.1+ (supported release lines) and stores state in local files. Read the [release notes](docs/releases/0.3.0.md) before upgrading an existing checkout.
 
 Ashford outreach uses the [versioned writing policy](docs/ASHFORD_OUTREACH_WRITING_POLICY.md) alongside Orwell for every campaign. See [draft and revision workflows](docs/outreach-campaigns.md).
 
@@ -44,7 +44,7 @@ npm link
 intake init
 ```
 
-Requires Node.js 22.23.4+, 24.22.1+, or 26.12.1+ (supported release lines).
+Requires Node.js 22.23.5+, 24.22.3+, or 26.13.1+ (supported release lines).
 
 Without `npm link`, run commands through Node:
 

@@ -13,3 +13,5 @@ Security defaults:
 - Approval required for risky or outbound actions.
 
 Action review, confidence and rule vetoes are enforced together. External execution is locked and uncertain outcomes require reconciliation. See [the hardening audit](audits/repository-hardening.md) for evidence and explicit limits.
+
+The minimum supported Node.js releases include the platform security fixes for HTTP and TLS. [Node.js November 2026 security releases](https://nodejs.org/en/blog/vulnerability/november-2026-security-releases/).
