@@ -145,7 +145,7 @@ function ciWorkflowCheck(workflowText) {
   const failures = [
     workflowText ? null : "missing .github/workflows/verify.yml",
     workflowText.includes("permissions:") && workflowText.includes("contents: read") ? null : "workflow must use read-only contents permission",
-    workflowText.includes("actions/checkout@v7") ? null : "workflow must use the Node 24 checkout action runtime",
+    workflowText.includes("actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1") ? null : "workflow must pin the Node 24 checkout action runtime",
     workflowText.includes("actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1") ? null : "workflow must use the Node 24 setup-node action runtime",
     workflowText.includes("npm ci") ? null : "workflow must run npm ci",
     workflowText.includes("npm run release:check") ? null : "workflow must run the complete release gate",

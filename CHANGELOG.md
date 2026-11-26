@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Keep AI classification requests at the configured endpoint and bound the
+  serialized request. Use the current DeepSeek Flash classifier model.
+- Preserve imported MIME bytes and confine raw preview and attachment writes.
+- Update the mail parsing and SMTP dependency copies and the transitive IP
+  parser to patched versions.
+
 - Enforce optional account-wide daily and batch outreach limits under shared delivery locks, including prior campaigns and uncertain sends, for both manifest and dashboard delivery.
 
 - Support subsequent five-prospect outreach batches with cross-batch copy review and separate resumable receipts. Use natural email subjects as Intake titles without campaign prefixes.
