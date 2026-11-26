@@ -9,7 +9,7 @@ export async function exportStrataDaily(root, options = {}) {
 }
 
 async function exportStrataDailyLocked(root, options = {}) {
-  const day = options.date || dateOnly();
+  const day = exportDate(options.date);
   const settings = await loadSettings(root);
   const items = await listItems(root);
   const learnings = await listLearnings(root);
@@ -17,7 +17,7 @@ async function exportStrataDailyLocked(root, options = {}) {
   const path = options.output || join(settings.strata_import_dir || join(root, "strata", "daily"), `intake-learnings-${day}.md`);
   await mkdir(dirname(path), { recursive: true });
   const md = renderStrataNote(day, dayItems, learnings);
-  await writeTextAtomic(path, md);
+  await writeTextAtomic(path, md, { mode: 0o600 });
   for (const learning of learnings) {
     if (!learning.exported_to_strata) {
       await saveLearning(root, { ...learning, exported_to_strata: true, status: learning.status === "accepted" ? "exported" : learning.status });
@@ -32,7 +32,7 @@ export async function exportTotalRecall(root, options = {}) {
 }
 
 async function exportTotalRecallLocked(root, options = {}) {
-  const day = options.date || dateOnly();
+  const day = exportDate(options.date);
   const settings = await loadSettings(root);
   const items = await listItems(root);
   const learnings = await listLearnings(root);
@@ -68,9 +68,22 @@ async function exportTotalRecallLocked(root, options = {}) {
         confidence: learning.confidence
       }))
   };
-  await writeJsonAtomic(path, payload);
+  await writeJsonAtomic(path, payload, { mode: 0o600 });
   await logEvent(root, "audit", { event_type: "totalrecall_export", output_refs: [path] });
   return path;
+}
+
+function exportDate(day = dateOnly()) {
+  if (typeof day !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(day)) throw new Error("export date must be YYYY-MM-DD");
+  const parsed = new Date(day);
+  if (!Number.isFinite(parsed.getTime()) || dateOnly(parsed) !== day) throw new Error("export date must be a valid calendar date");
+  return day;
+}
+
+function markdownText(value) {
+  // Inline evidence stays on one line and cannot introduce Markdown or HTML.
+  return String(value).replace(/[\p{Cc}\p{Zl}\p{Zp}]+/gu, " ").trim()
+    .replace(/^-|[!-,./:-@\[-`{-~]/g, (char) => `&#${char.charCodeAt(0)};`);
 }
 
 function renderStrataNote(day, items, learnings) {
@@ -147,21 +160,21 @@ function countBy(items, field) {
 
 function renderCounts(counts) {
   const rows = Object.entries(counts).sort((a, b) => b[1] - a[1]);
-  return rows.length ? rows.map(([key, value]) => `- ${key}: ${value}`).join("\n") : "- none";
+  return rows.length ? rows.map(([key, value]) => `- ${markdownText(key)}: ${value}`).join("\n") : "- none";
 }
 
 function renderTaggedItems(items, tag) {
   const rows = items.filter((item) => item.tags?.includes(tag));
-  return rows.length ? rows.map((item) => `- ${item.id}: ${item.title}`).join("\n") : "- none";
+  return rows.length ? rows.map((item) => `- ${markdownText(item.id)}: ${markdownText(item.title)}`).join("\n") : "- none";
 }
 
 function renderQueueItems(items, queue) {
   const rows = items.filter((item) => item.queue === queue);
-  return rows.length ? rows.map((item) => `- ${item.id}: ${item.title}`).join("\n") : "- none";
+  return rows.length ? rows.map((item) => `- ${markdownText(item.id)}: ${markdownText(item.title)}`).join("\n") : "- none";
 }
 
 function renderLearningList(learnings, type) {
   const knownTypes = ["faq_candidate", "agent_mistake", "rule_suggestion", "item_learning"];
   const rows = learnings.filter((learning) => type === null ? !knownTypes.includes(learning.type) : learning.type === type);
-  return rows.length ? rows.map((learning) => `- ${learning.title}: ${learning.summary}`).join("\n") : "- none";
+  return rows.length ? rows.map((learning) => `- ${markdownText(learning.title)}: ${markdownText(learning.summary)}`).join("\n") : "- none";
 }

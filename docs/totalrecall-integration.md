@@ -8,3 +8,5 @@
 - Summaries, outcomes, tags, queues, and risk.
 
 TotalRecall remains responsible for recall and durable memory.
+
+`--date` accepts a calendar date in `YYYY-MM-DD` format. On POSIX, exported files are private to the operator (`0600`), including replacements.

@@ -1,13 +1,13 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { initStore, loadLearning, saveLearning } from "../src/storage.js";
 import { makeLearning, makeSource } from "../src/models.js";
 import { buildSourceFromInput } from "../src/source-config.js";
-import { exportStrataDaily } from "../src/exports.js";
+import { exportStrataDaily, exportTotalRecall } from "../src/exports.js";
 import { createBackup, verifyBackup } from "../src/backup.js";
 
 async function fixture(t) {
@@ -34,11 +34,33 @@ test("Strata exports contain every learning marked as exported", async (t) => {
     await saveLearning(root, learning);
   }
   const output = await exportStrataDaily(root);
-  const text = await readFile(output, "utf8");
+  const text = (await readFile(output, "utf8"))
+    .replace(/&#(\d+);/g, (_, code) => String.fromCharCode(Number(code)));
   for (const type of ["general", "custom-lesson", "item_learning"]) {
     assert.equal((await loadLearning(root, type)).exported_to_strata, true);
     assert.ok(text.includes(`Evidence ${type}`), `${type} must actually be in the exported note`);
   }
+});
+
+test("memory exports keep evidence private and present Strata fields as inline text", async (t) => {
+  const { root, base } = await fixture(t);
+  const day = "2026-11-26";
+  const title = "Quarterly [notes]";
+  const summary = "Summary\nSecond line <draft> & details";
+  await saveLearning(root, makeLearning({ title, summary, status: "accepted" }));
+  for (const [write, name] of [[exportStrataDaily, "strata.md"], [exportTotalRecall, "recall.json"]]) {
+    await assert.rejects(() => write(root, { date: "2026-02-30" }), /valid calendar date/);
+    await assert.rejects(() => write(root, { date: "November 26" }), /YYYY-MM-DD/);
+    const output = join(base, name);
+    await writeFile(output, "", { mode: 0o644 });
+    assert.equal(await write(root, { date: day, output }), output);
+    if (process.platform !== "win32") assert.equal((await stat(output)).mode & 0o777, 0o600);
+  }
+  const text = await readFile(join(base, "strata.md"), "utf8");
+  assert.ok(text.split("\n").includes("- Quarterly &#91;notes&#93;: Summary Second line &#60;draft&#62; &#38; details"));
+  const [{ title: jsonTitle, summary: jsonSummary }] = JSON.parse(await readFile(join(base, "recall.json"), "utf8")).learnings;
+  assert.equal(jsonTitle, title);
+  assert.equal(jsonSummary, summary);
 });
 
 test("backup rotation tolerates a candidate disappearing during its header read", async (t) => {
