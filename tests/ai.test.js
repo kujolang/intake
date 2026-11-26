@@ -126,3 +126,51 @@ test("AI fallback does not claim that attempted provider requests never occurred
   }
   assert.equal(calls, 2);
 });
+
+
+test("AI requests bound the sent fields and stop at a redirect", async (t) => {
+  process.env.INTAKE_PAYLOAD_TEST_KEY = "fixture";
+  t.after(() => delete process.env.INTAKE_PAYLOAD_TEST_KEY);
+  const settings = {
+    ai_enabled: true,
+    ai_provider: "openai-compatible",
+    ai_base_url: "https://classifier.example.test/v1",
+    ai_api_key_env: "INTAKE_PAYLOAD_TEST_KEY",
+    ai_max_input_bytes: 1024
+  };
+  const item = makeItem({ title: "Question", body: "Help 雪", metadata: { ignored: "x".repeat(4096) } });
+  let bytes;
+  let calls = 0;
+  let cancelled = false;
+  t.mock.method(globalThis, "fetch", async (url, options) => {
+    calls++;
+    assert.equal(options.redirect, "manual");
+    assert.equal(url, "https://classifier.example.test/v1/chat/completions");
+    bytes = Buffer.byteLength(options.body);
+    assert.equal(JSON.parse(JSON.parse(options.body).messages[1].content).body, "Help 雪");
+    assert.equal(options.body.includes(item.metadata.ignored), false);
+    return new Response(new ReadableStream({ cancel() { cancelled = true; } }), {
+      status: 307, headers: { location: "https://redirect.example.test/" }
+    });
+  });
+  assert.equal((await classifyWithAi(item, settings)).human_review_required, true);
+  assert.equal(cancelled, true);
+  assert.equal(calls, 1);
+  await assert.rejects(() => classifyWithAi(item, { ...settings, ai_max_input_bytes: bytes - 1 }), /AI input exceeds/);
+  assert.equal(calls, 1);
+});
+
+test("the DeepSeek preset classifies with the current Flash model", async (t) => {
+  process.env.INTAKE_FLASH_TEST_KEY = "fixture";
+  t.after(() => delete process.env.INTAKE_FLASH_TEST_KEY);
+  const settings = { ai_enabled: true, ai_provider: "deepseek", ai_api_key_env: "INTAKE_FLASH_TEST_KEY" };
+  assert.equal(resolveAiProvider(settings).model, "deepseek-flash");
+  t.mock.method(globalThis, "fetch", async (url, options) => {
+    const body = JSON.parse(options.body);
+    assert.equal(url, "https://api.deepseek.com/v1/chat/completions");
+    assert.equal(body.model, "deepseek-flash");
+    assert.deepEqual(body.thinking, { type: "disabled" });
+    return Response.json({ choices: [{ message: { content: '{"summary":"fixture"}' } }] });
+  });
+  assert.equal((await classifyWithAi(makeItem({ body: "Test" }), settings)).summary, "fixture");
+});
