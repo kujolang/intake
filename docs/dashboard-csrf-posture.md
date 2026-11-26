@@ -11,6 +11,7 @@ Current controls:
 - Requires non-local dashboard tokens to be at least 20 characters.
 - Requires the dashboard token through `x-intake-token`, `Authorization: Bearer`, or the tokenized local URL.
 - Compares dashboard tokens using constant-time string comparison.
+- Checks the token again under the store lock before routing so rotation revokes credentials on requests still waiting for a body or the lock.
 - Uses `SameSite`-independent token checks rather than cookie authentication.
 - Sends `frame-ancestors 'none'` and `X-Frame-Options: DENY`.
 - Sends `Cache-Control: no-store`.

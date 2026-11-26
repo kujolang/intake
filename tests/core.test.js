@@ -116,7 +116,8 @@ test("draft actions are approval gated before execution", async () => {
     await classifyAndSave(root, item.id);
     const action = await proposeDraft(root, item.id);
     const blocked = await runAction(root, action.id);
-    assert.equal(blocked.status, "blocked");
+    assert.equal(blocked.status, "needs_review");
+    assert.match(blocked.result.error, /requires approval/);
     const approved = await approveAction(root, action.id);
     assert.equal(approved.status, "approved");
     const executed = await runAction(root, action.id);
@@ -152,10 +153,10 @@ test("approved blocked send actions do not execute", async () => {
     const action = makeAction({
       intake_item_id: item.id,
       type: "send_response",
-      status: "approved",
       body: "Refunds require review."
     });
     await saveAction(root, action);
+    await approveAction(root, action.id);
     const result = await runAction(root, action.id);
     assert.equal(result.status, "blocked");
     assert.match(result.result.error, /blocked by policy/);
@@ -481,10 +482,10 @@ test("approved GitHub comment actions execute through adapter writeback", async 
       const action = makeAction({
         intake_item_id: item.id,
         type: "comment_issue",
-        status: "approved",
         body: "Thanks, we are reviewing this."
       });
       await saveAction(root, action);
+      await approveAction(root, action.id);
       const result = await runAction(root, action.id);
       assert.equal(result.status, "executed");
       assert.equal(result.result.comment_url, "https://github.com/acme/app/issues/7#issuecomment-1");

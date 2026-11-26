@@ -26,7 +26,7 @@ Views:
 
 - Sources: guided first-source setup, add/edit email, file, webhook, Slack, GitHub, Jira, Linear, ClickUp, and manual sources; test sources; sync sources; enable or disable sources.
 - Inbox: familiar Inbox, Later, Mine, Unassigned, and Done views; queue filters; item detail; assignment; snooze; classify, draft, learn, resolve, and block controls.
-- Approvals: approve, reject, and run actions; filter approval audit rows by operator, source, action type, status, and date; export approval audit CSV.
+- Approvals use dedicated approve, reject, and run commands. New actions start as proposed or awaiting review. The approval audit supports filtering by operator, source, action type, status, and date. CSV exports mark formula-like cells as text. JSON rows retain their original values.
 - Learnings: review generated learning records.
 - Rules: inspect deterministic rules.
 - Audit: inspect JSONL operational logs.

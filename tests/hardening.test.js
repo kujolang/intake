@@ -19,7 +19,7 @@ import { sanitizeSource } from "../src/source-config.js";
 import { loadDotEnvFiles } from "../src/secrets.js";
 import { initStore, listActionIndex, listItemIndex, listLearningIndex, listItems, loadAction, loadSettings, saveAction, saveItem, saveLearning, savePolicies, saveSettings, saveSources } from "../src/storage.js";
 import { sha256, writeJsonAtomic } from "../src/util.js";
-import { approveAction, classifyAndSave, proposeDraft, runAction } from "../src/workflow.js";
+import { approveAction, classifyAndSave, proposeDraft, rejectAction, runAction } from "../src/workflow.js";
 
 async function store(t) {
   const root = await mkdtemp(join(tmpdir(), "intake-hardening-"));
@@ -199,8 +199,9 @@ test("concurrent action requests execute once and rejected actions remain reject
   await saveSettings(root, { ...(await loadSettings(root)), auto_actions_enabled: true });
   const item = makeItem({ id: "item", body: "normal" });
   await saveItem(root, item);
-  const action = makeAction({ id: "action", intake_item_id: item.id, type: "create_learning", status: "approved" });
+  const action = makeAction({ id: "action", intake_item_id: item.id, type: "create_learning" });
   await saveAction(root, action);
+  await approveAction(root, action.id);
   const results = await Promise.all(Array.from({ length: 10 }, () => runAction(root, action.id)));
   assert.equal(new Set(results.map(result => result.result.learning_id)).size, 1);
   assert.equal((await listLearningIndex(root)).length, 1);
@@ -227,12 +228,15 @@ test("failed outbound actions require reconciliation before retry", async (t) =>
   await saveSources(root, [makeSource("github", { id: "github", config: { api_token: "fixture" } })]);
   await savePolicies(root, [autoPolicy]);
   await saveItem(root, makeItem({ id: "item", source_id: "github", source_native_id: "1", metadata: { project: "owner/repo" } }));
-  await saveAction(root, makeAction({ id: "action", intake_item_id: "item", type: "comment_issue", status: "approved" }));
+  await saveAction(root, makeAction({ id: "action", intake_item_id: "item", type: "comment_issue" }));
+  await approveAction(root, "action");
   const previous = globalThis.fetch;
   let calls = 0;
   t.after(() => globalThis.fetch = previous);
   globalThis.fetch = async () => { calls++; throw new Error("connection lost"); };
   await assert.rejects(() => runAction(root, "action"), /connection lost/);
+  assert.equal((await loadAction(root, "action")).status, "execution_uncertain");
+  await assert.rejects(() => rejectAction(root, "action"), { statusCode: 409 });
   assert.equal((await loadAction(root, "action")).status, "execution_uncertain");
   await assert.rejects(() => runAction(root, "action"), /reconcile/);
   assert.equal(calls, 1);
@@ -264,7 +268,9 @@ test("draft creation cannot clear a safety review gate", async (t) => {
   await saveItem(root, makeItem({ id: "item", body: "Please review https://example.test" }));
   await classifyAndSave(root, "item");
   const draft = await proposeDraft(root, "item");
-  assert.equal((await runAction(root, draft.id)).status, "blocked");
+  const attempted = await runAction(root, draft.id);
+  assert.equal(attempted.status, "needs_review");
+  assert.match(attempted.result.error, /requires approval/);
   await approveAction(root, draft.id);
   assert.equal((await runAction(root, draft.id)).status, "executed");
 });
@@ -279,8 +285,12 @@ test("backups round trip supported colon-bearing record IDs", async (t) => {
 
 test("editing an approved action invalidates the approval", async (t) => {
   const root = await store(t);
+  await saveSources(root, [makeSource("manual", { id: "manual" })]);
+  await savePolicies(root, [autoPolicy]);
+  await saveSettings(root, { ...(await loadSettings(root)), auto_actions_enabled: true });
   await saveItem(root, makeItem({ id: "item" }));
-  await saveAction(root, makeAction({ id: "action", intake_item_id: "item", type: "draft_response", status: "approved", approved_by: "operator", body: "original" }));
+  await saveAction(root, makeAction({ id: "action", intake_item_id: "item", type: "draft_response", body: "original" }));
+  await approveAction(root, "action");
   const dashboard = await startDashboard(root, { port: 0, token: "test" });
   t.after(() => new Promise(resolve => dashboard.server.close(resolve)));
   const response = await fetch(`http://127.0.0.1:${dashboard.port}/api/actions/action/update`, { method: "POST", headers: { "x-intake-token": "test", "content-type": "application/json" }, body: JSON.stringify({ body: "changed" }) });
@@ -288,6 +298,21 @@ test("editing an approved action invalidates the approval", async (t) => {
   const { action } = await response.json();
   assert.equal(action.status, "needs_review");
   assert.equal(action.approved_by, null);
+  for (let attempt = 0; attempt < 2; attempt++) {
+    assert.equal((await runAction(root, action.id)).status, "needs_review");
+  }
+});
+
+test("legacy status-only approvals require review even when automatic execution is enabled", async (t) => {
+  const root = await store(t);
+  await saveSources(root, [makeSource("manual", { id: "manual" })]);
+  await savePolicies(root, [autoPolicy]);
+  await saveSettings(root, { ...(await loadSettings(root)), auto_actions_enabled: true });
+  await saveItem(root, makeItem({ id: "item" }));
+  await saveAction(root, makeAction({ id: "legacy", intake_item_id: "item", type: "mark_resolved", status: "approved" }));
+  assert.equal((await runAction(root, "legacy")).status, "needs_review");
+  await approveAction(root, "legacy");
+  assert.equal((await runAction(root, "legacy")).status, "executed");
 });
 
 

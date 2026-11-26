@@ -109,16 +109,19 @@ export async function startDashboard(root, options = {}) {
       if (url.pathname === "/healthz") return sendJson(res, { ok: true, local_only: localOnly });
       if (!authorized(req, url, activeToken)) return sendJson(res, { error: "unauthorized" }, 401);
       const body = await parseBody(req);
-      const route = () => routeApi(root, req.method, url, body, {
-        dashboardToken: () => activeToken,
-        dashboardTokenSource: () => activeTokenSource,
-        securityPosture: posture,
-        rotateDashboardToken: () => {
-          activeToken = randomBytes(24).toString("base64url");
-          activeTokenSource = "runtime-rotated";
-          return activeToken;
-        }
-      });
+      const route = () => {
+        if (!authorized(req, url, activeToken)) throw httpError(401, "unauthorized");
+        return routeApi(root, req.method, url, body, {
+          dashboardToken: () => activeToken,
+          dashboardTokenSource: () => activeTokenSource,
+          securityPosture: posture,
+          rotateDashboardToken: () => {
+            activeToken = randomBytes(24).toString("base64url");
+            activeTokenSource = "runtime-rotated";
+            return activeToken;
+          }
+        });
+      };
       const result = await withStoreLock(root, route);
       return sendJson(res, result);
     } catch (error) {
@@ -333,11 +336,13 @@ async function createDashboardAction(root, body) {
   if (!type) throw httpError(400, "action requires type");
   const item = await requireItem(root, itemId);
   if (item.metadata?.outreach) throw httpError(400, "Outreach drafts require the reviewed campaign workflow");
+  const status = nullableString(body.status) || "proposed";
+  if (!["proposed", "needs_review"].includes(status)) throw httpError(400, "new actions must be proposed or require review");
   const action = makeAction({
     intake_item_id: item.id,
     source_id: item.source_id,
     type,
-    status: nullableString(body.status) || "proposed",
+    status,
     proposed_by: "dashboard",
     body: nullableString(body.body) || "",
     risk_level: nullableString(body.risk_level) || item.risk_level || "medium",
@@ -372,12 +377,13 @@ async function updateDashboardActionLocked(root, actionId, body) {
   if (!action) throw httpError(404, "no such action");
   const item = await requireItem(root, action.intake_item_id);
   if (action.metadata?.outreach || item.metadata?.outreach) throw httpError(400, "Outreach edits require the reviewed campaign revision workflow");
-  if (["executed", "executing", "execution_uncertain"].includes(action.status)) throw httpError(400, "executed actions cannot be edited");
+  if (["executed", "executing", "execution_uncertain", "rejected"].includes(action.status)) throw httpError(400, "this action cannot be edited");
+  const status = nullableString(body.status);
+  if (status && status !== action.status) throw httpError(400, "use an action command to change its status");
   const next = {
     ...action,
     type: nullableString(body.type) || action.type,
     body: body.body === undefined ? action.body : String(body.body || ""),
-    status: nullableString(body.status) || action.status,
     risk_level: nullableString(body.risk_level) || action.risk_level,
     metadata: {
       ...(action.metadata || {}),
@@ -385,7 +391,7 @@ async function updateDashboardActionLocked(root, actionId, body) {
       edited_at: isoNow()
     }
   };
-  if (next.type !== action.type || next.body !== action.body) {
+  if (next.type !== action.type || next.body !== action.body || next.risk_level !== action.risk_level) {
     next.status = "needs_review";
     next.approved_by = null;
     next.approved_at = null;
@@ -539,7 +545,8 @@ function approvalAuditCsv(rows) {
 }
 
 function csvCell(value) {
-  const text = String(value ?? "");
+  const raw = String(value ?? "");
+  const text = /^[\s\u0000-\u001f\u007f]*[=+@＝＋＠－-]|^[\t\r\n]/u.test(raw) ? "'" + raw : raw;
   return /[",\n\r]/.test(text) ? `"${text.replaceAll('"', '""')}"` : text;
 }
 
@@ -1637,7 +1644,7 @@ function dashboardHtml() {
       body.value = action.body || "";
       const type = input("actionType-" + action.id, action.type || "");
       const risk = select("actionRisk-" + action.id, ["low", "medium", "high", "critical"], action.risk_level || "low");
-      const canEdit = action.status !== "executed";
+      const canEdit = !["executed", "executing", "execution_uncertain", "rejected"].includes(action.status);
       return el("div", { class: "action-row" }, [
           el("b", { text: action.type + " · " + action.status }),
           el("div", { class: "muted", text: action.id + " · " + action.intake_item_id }),
@@ -1651,7 +1658,7 @@ function dashboardHtml() {
           el("div", { class: "controls" }, [
             button("Save", () => actionUpdate(action.id, { type: type.value, risk_level: risk.value, body: body.value }), "", !canEdit, "device-floppy"),
             button("Approve", () => actionPost(action.id, "approve"), "", !["proposed", "needs_review", "blocked"].includes(action.status), "check"),
-            button("Reject", () => actionPost(action.id, "reject"), "danger", ["executed", "rejected"].includes(action.status), "x"),
+            button("Reject", () => actionPost(action.id, "reject"), "danger", !canEdit, "x"),
             button("Run", () => actionPost(action.id, "run"), "primary", action.status !== "approved", "player-play")
           ])
       ]);

@@ -1,5 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { request } from "node:http";
+import { once } from "node:events";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -34,6 +36,69 @@ test("dashboard requires API token", async () => {
   await withDashboard(async (dashboard) => {
     const response = await fetch(`http://${dashboard.host}:${dashboard.port}/api/summary`);
     assert.equal(response.status, 401);
+  });
+});
+
+test("token rotation invalidates dashboard requests waiting for their body", async () => {
+  await withDashboard(async (dashboard) => {
+    const base = new URL(dashboard.url).origin;
+    const headers = { "x-intake-token": dashboard.token, "content-type": "application/json" };
+    const body = JSON.stringify({ enabled: true });
+    const accepted = once(dashboard.server, "request");
+    const pending = request(base + "/api/settings/auto-actions", { method: "POST", headers: { ...headers, "content-length": Buffer.byteLength(body) } });
+    const response = once(pending, "response");
+    try {
+      pending.flushHeaders();
+      await accepted;
+      const rotation = await fetch(base + "/api/dashboard-token/rotate", { method: "POST", headers, body: "{}" });
+      assert.equal(rotation.status, 200);
+      await rotation.json();
+      pending.end(body);
+      const [result] = await response;
+      assert.equal(result.statusCode, 401);
+      result.resume();
+    } finally {
+      pending.destroy();
+      await response.catch(() => {});
+    }
+  });
+});
+
+test("dashboard action status changes require explicit action commands", async () => {
+  await withDashboard(async (dashboard, item) => {
+    const base = new URL(dashboard.url).origin;
+    const headers = { "x-intake-token": dashboard.token, "content-type": "application/json" };
+    const post = (path, body) => fetch(base + "/api/actions" + path, { method: "POST", headers, body: JSON.stringify(body) });
+    const refused = await post("", { item_id: item.id, status: "approved" });
+    assert.equal(refused.status, 400);
+    const created = await post("", { item_id: item.id });
+    const { action } = await created.json();
+    const update = await post(`/${action.id}/update`, { status: "approved" });
+    assert.equal(update.status, 400);
+    const approval = await post(`/${action.id}/approve`, {});
+    assert.equal((await approval.json()).action.approved_by, "dashboard");
+    const edit = await post(`/${action.id}/update`, { risk_level: "critical" });
+    const edited = (await edit.json()).action;
+    assert.equal(edited.status, "needs_review");
+    assert.equal(edited.approved_by, null);
+    assert.equal(edited.approved_at, null);
+  });
+});
+
+test("approval audit CSV exports formula-like fields as text and preserves JSON values", async () => {
+  await withDashboard(async (dashboard, item, root) => {
+    const operator = "  =1+1";
+    const type = 'normal, "quoted"';
+    await saveAction(root, makeAction({
+      id: "csv-fixture", intake_item_id: item.id, type, status: "approved",
+      approved_by: operator, approved_at: new Date().toISOString()
+    }));
+    const url = new URL("/api/approval-audit?format=csv", dashboard.url);
+    const response = await fetch(url, { headers: { "x-intake-token": dashboard.token } });
+    const { rows, csv } = await response.json();
+    assert.equal(rows[0].operator, operator);
+    assert.equal(rows[0].action_type, type);
+    assert.ok(csv.includes(",'" + operator + ',"normal, ""quoted""",'));
   });
 });
 

@@ -262,8 +262,11 @@ async function rejectActionStoreLocked(root, actionId, approvedBy = "local-opera
 
 async function rejectActionLocked(root, actionId, approvedBy = "local-operator") {
   const action = await requireAction(root, actionId);
-  if (action.status === "executed") {
+  if (["executed", "rejected"].includes(action.status)) {
     return action;
+  }
+  if (["executing", "execution_uncertain"].includes(action.status)) {
+    throw Object.assign(new Error("reconcile the external effect before changing an uncertain action"), { statusCode: 409 });
   }
   const next = { ...action, status: "rejected", approved_by: approvedBy, approved_at: isoNow() };
   await saveAction(root, next);
@@ -294,10 +297,15 @@ async function runActionLocked(root, actionId) {
   const policies = await loadPolicies(root);
   const actionType = action.type === "draft_response" && source?.type === "email" ? "append_remote_draft" : action.type;
   const policyResult = evaluatePolicy({ item, actionType, policies, settings, source });
+  const approved = action.status === "approved" &&
+    typeof action.approved_by === "string" && Boolean(action.approved_by.trim()) &&
+    typeof action.approved_at === "string" && Number.isFinite(Date.parse(action.approved_at));
+  const needsReview = action.status === "needs_review" || (action.status === "approved" && !approved);
+  const blockedStatus = needsReview ? "needs_review" : "blocked";
   if (policyResult.blocked || !policyResult.allowed) {
     const blocked = {
       ...action,
-      status: "blocked",
+      status: blockedStatus,
       result: {
         error: "action is blocked by policy",
         policy_result: policyResult
@@ -315,8 +323,8 @@ async function runActionLocked(root, actionId) {
     });
     return blocked;
   }
-  if (action.status !== "approved" && !policyResult.auto_execute_allowed) {
-    const blocked = { ...action, status: "blocked", result: { error: "action requires approval before execution", policy_result: policyResult } };
+  if (!approved && (needsReview || !policyResult.auto_execute_allowed)) {
+    const blocked = { ...action, status: blockedStatus, result: { error: "action requires approval before execution", policy_result: policyResult } };
     await saveAction(root, blocked);
     await logEvent(root, "actions", {
       source_id: item.source_id,
@@ -329,10 +337,8 @@ async function runActionLocked(root, actionId) {
     });
     return blocked;
   }
-  const autoExecuted = action.status !== "approved" && policyResult.auto_execute_allowed;
-
   await saveAction(root, { ...action, status: "executing" });
-  if (autoExecuted) {
+  if (!approved) {
     await saveSettings(root, { ...settings, action_counters: nextActionCounters(settings, actionType), updated_at: isoNow() });
   }
   let result;

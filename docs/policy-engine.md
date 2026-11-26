@@ -35,4 +35,4 @@ Automatic execution honors `requires_human_review`, persistent item review requi
 
 Source synchronization snapshots rules/settings once per batch, applying a consistent policy configuration and avoiding repeated reads for every item. Manual classification reads the current configuration.
 
-Action attempts reserve automatic budgets before invoking adapters. Uncertain attempts retain their reservation; operators must reconcile effects before an explicit retry approval. Editing an approved action body or type invalidates the previous approval.
+Action attempts reserve automatic budgets before invoking adapters. Uncertain attempts retain their reservation and refuse rejection while the outcome is recorded as uncertain. To retry, reconcile the external effect and explicitly approve the action again. Editing the body, type, or risk of an action clears approval and requires review. Failed run attempts preserve that review requirement even when automatic execution is enabled. Older records marked approved without an approver and valid timestamp require explicit approval again.
