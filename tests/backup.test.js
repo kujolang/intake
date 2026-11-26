@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp, readFile, readdir, rm, utimes, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, readdir, rm, stat, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { gunzipSync, gzipSync } from "node:zlib";
@@ -64,6 +64,31 @@ test("backup restore refuses non-empty targets unless forced", async () => {
     assert.equal(forced.ok, true);
   } finally {
     await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("new stores and restored archives protect data even under a permissive umask", {
+  skip: process.platform === "win32"
+}, async (t) => {
+  const root = await mkdtemp(join(tmpdir(), "intake-private-store-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const previous = process.umask(0);
+  try {
+    const store = join(root, "store");
+    const restored = join(root, "restored");
+    const archive = join(root, "private.json.gz");
+    const mode = async (path) => (await stat(path)).mode & 0o777;
+    await initStore(store);
+    assert.equal(await mode(store), 0o700);
+    await writeFile(join(store, ".env"), "INTAKE_SECRET_FIXTURE=value\n");
+    await createBackup(store, { output: archive, includeSecrets: true });
+    await restoreBackup(archive, restored);
+    assert.equal(await mode(restored), 0o700);
+    assert.equal(await mode(join(restored, ".env")), 0o600);
+    assert.equal(await mode(join(restored, "config", "sources.json")), 0o600);
+    assert.equal(await readFile(join(restored, ".env"), "utf8"), "INTAKE_SECRET_FIXTURE=value\n");
+  } finally {
+    process.umask(previous);
   }
 });
 

@@ -82,11 +82,11 @@ async function restoreBackupLocked(path, targetRoot, options = {}) {
   const journal = { version: 1, root: targetRoot, nonce, had_target: hadTarget, phase: "building" };
   await writeJsonAtomic(restoreJournalPath(targetRoot), journal);
   try {
-    await mkdir(staging, { recursive: true });
+    await mkdir(staging, { mode: 0o700 });
     for (const file of backup.files) {
       const target = safeJoin(staging, file.path);
       await mkdir(dirname(target), { recursive: true });
-      await writeFile(target, Buffer.from(file.content_base64, "base64"), { flag: "wx" });
+      await writeFile(target, Buffer.from(file.content_base64, "base64"), { flag: "wx", mode: 0o600 });
     }
     await initStore(staging);
     await logEvent(staging, "audit", {

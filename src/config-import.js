@@ -59,5 +59,9 @@ export async function recoverConfigImport(root) {
 }
 
 async function install(root, payload) {
-  for (const section of SECTIONS) await writeJsonAtomic(join(root, "config", `${section}.json`), payload[section]);
+  for (const section of SECTIONS) {
+    await writeJsonAtomic(join(root, "config", `${section}.json`), payload[section], {
+      mode: section === "sources" ? 0o600 : undefined
+    });
+  }
 }

@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, realpath, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { initStore, loadPolicies, loadRules, loadSettings, saveSources, loadSources } from "../src/storage.js";
@@ -66,6 +66,7 @@ test("interrupted config imports block ordinary access and recover the entire re
   const recovery = cli(["store", "recover", "--dir", root]);
   assert.equal(recovery.status, 0, recovery.stderr);
   assert.deepEqual(await loadSources(root), payload.sources);
+  if (process.platform !== "win32") assert.equal((await stat(join(root, "config", "sources.json"))).mode & 0o077, 0);
   assert.deepEqual(await loadSettings(root), payload.settings);
   assert.deepEqual(await loadRules(root), payload.rules);
   assert.deepEqual(await loadPolicies(root), payload.policies);

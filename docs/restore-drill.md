@@ -58,5 +58,7 @@ Retention validates both day limits before deleting any payloads. Purge checks e
 
 Backups exclude `.intake/.env` and `.intake/secrets/` by default. That is the safer operating mode. If you intentionally include secrets for an encrypted offsite backup process, document where the archive is stored, who can decrypt it, and how it is rotated.
 
+On POSIX filesystems, restore creates a private staging and destination root (0700) and writes archived files with owner-only permissions (0600).
+
 
 Stop writers before creating/restoring backups. Default archives also remove supported inline source credentials; referenced environment/Keychain secrets must be provisioned separately. Verification and restore accept `--max-bytes N` to override the default 256 MiB decompressed-byte ceiling. Invalid archives and failed staging leave the original target intact; replacement uses sibling staging and recovery directories, so reserve enough disk for both the old and restored stores.

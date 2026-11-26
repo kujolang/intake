@@ -40,6 +40,7 @@ export async function initStore(root) {
 }
 
 async function initStoreLocked(root) {
+  await mkdir(root, { recursive: true, mode: 0o700 });
   for (const dir of REQUIRED_DIRS) {
     await mkdir(join(root, dir), { recursive: true });
   }
@@ -87,7 +88,7 @@ export async function saveSources(root, sources) {
 }
 
 async function saveSourcesLocked(root, sources) {
-  await writeJsonAtomic(paths(root).sources, sources);
+  await writeJsonAtomic(paths(root).sources, sources, { mode: 0o600 });
 }
 
 export async function loadPolicies(root) {

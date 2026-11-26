@@ -10,6 +10,8 @@ State lives in `.intake/` by default:
 
 Prefer environment or Keychain secret references. Legacy inline source credentials are supported, masked in source exports, and omitted from default backups.
 
+On POSIX filesystems, new store roots use owner-only permissions (0700), and source configuration saves and imports use 0600. For existing stores, check the root directory's permissions before storing private records.
+
 All supported CLI operations, dashboard requests, receivers, maintenance, and storage APIs coordinate with an exclusive sibling `<store>.intake-lock` file. Independent operations in one process queue; another process fails before reading/writing with `INTAKE_STORE_BUSY` (HTTP 409 / CLI failure). Retry after the active operation completes. Locks cover config read/modify/write, sync, index updates, log retention, and backup snapshots. Restore retains its lock while replacing the store. This is cooperative local-filesystem isolation, not an ACID database or a network-filesystem guarantee. Older binaries and direct filesystem edits do not participate: stop them before upgrading.
 
 After a crashed writer exits, run `intake store recover --dir PATH`. It refuses a live PID or another host, gates new operations, and rebuilds all three indexes from durable records before unlocking. There is no timed lease stealing. If ownership is unreadable, stop all writers, inspect the lock, then use `--force`; force never overrides a readable live owner. If recovery itself crashes, inspect `<store>.intake-recovery/owner.json` and remove that directory only after its process has exited, then rerun recovery. Parent-directory write permission is required.
