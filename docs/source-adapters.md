@@ -18,6 +18,8 @@ Core logic detects capabilities instead of assuming every source can send, comme
 
 Issue-tracker adapters normalize provider payloads into the same `IntakeItem` shape as email and Slack. They preserve raw JSON payloads, map provider issue IDs into source-scoped dedupe keys, and tag records with the provider name for filtering.
 
+Slack and GitHub authenticate signed requests against the received bytes before decoding UTF-8 JSON. Malformed UTF-8 is rejected. GitHub comment writeback refuses redirects. After a repository move, confirm the current target and reconcile the original action before retrying.
+
 Use `intake templates list` to discover setup templates for common systems. New adapters should follow [adapter-authoring.md](adapter-authoring.md).
 
 ## Receiver retries

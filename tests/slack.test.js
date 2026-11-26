@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { createHmac } from "node:crypto";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -45,7 +46,7 @@ test("Slack receiver verifies signed events and normalizes messages", async () =
     assert.equal(challenge.status, 200);
     assert.equal(await challenge.text(), "challenge-token");
 
-    const eventBody = JSON.stringify({
+    const eventBody = Buffer.from(JSON.stringify({
       type: "event_callback",
       team_id: "T123",
       event_id: "Ev123",
@@ -53,10 +54,10 @@ test("Slack receiver verifies signed events and normalizes messages", async () =
         type: "message",
         channel: "C123",
         user: "U123",
-        text: "The release is broken with an error",
+        text: "The release is broken with an error 📬",
         ts: "1781650000.000100"
       }
-    });
+    }));
     const eventSig = signSlackTestBody(eventBody, "slack-secret");
     const event = await fetch(url, {
       method: "POST",
@@ -71,7 +72,18 @@ test("Slack receiver verifies signed events and normalizes messages", async () =
     assert.equal(items.length, 1);
     assert.equal(items[0].source_type, "slack");
     assert.equal(items[0].queue, "engineering");
+    assert.equal(items[0].body, "The release is broken with an error 📬");
     assert.ok(items[0].tags.includes("slack"));
     assert.ok(items[0].tags.includes("bug-report"));
+
+    const invalidUtf8 = Buffer.concat([Buffer.from('{"text":"'), Buffer.from([0xff]), Buffer.from('"}')]);
+    const signature = createHmac("sha256", "slack-secret").update(`v0:${eventSig.timestamp}:`).update(invalidUtf8).digest("hex");
+    const malformed = await fetch(url, {
+      method: "POST",
+      headers: { "x-slack-request-timestamp": eventSig.timestamp, "x-slack-signature": `v0=${signature}` },
+      body: invalidUtf8
+    });
+    assert.equal(malformed.status, 400);
+    assert.equal((await listItems(root)).length, 1);
   });
 });

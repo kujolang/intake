@@ -59,8 +59,12 @@ export function includesAny(text, terms) {
 }
 
 export async function readStreamText(stream, { maxBytes = 1024 * 1024, label = "request body" } = {}) {
+  return (await readStreamBytes(stream, { maxBytes, label })).toString("utf8");
+}
+
+export async function readStreamBytes(stream, { maxBytes, label }) {
   try {
-    return (await readBounded(stream, maxBytes, label)).toString("utf8");
+    return await readBounded(stream, maxBytes, label);
   } catch (error) {
     if (error.code === "INTAKE_RESOURCE_LIMIT") error.statusCode = 413;
     throw error;

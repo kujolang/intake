@@ -1,9 +1,9 @@
-import { createHmac, timingSafeEqual } from "node:crypto";
+import { createHmac } from "node:crypto";
 import { createServer } from "node:http";
 import { makeItem } from "../models.js";
 import { resolveSecretRef } from "../secrets.js";
 import { storeRaw } from "../storage.js";
-import { readStreamText } from "../util.js";
+import { readStreamBytes, timingSafeEqualString } from "../util.js";
 import { receiveItem } from "../workflow.js";
 import { recordRequestError, requestErrorPayload } from "../request-errors.js";
 
@@ -70,14 +70,14 @@ export async function startSlackServer(root, source, options = {}) {
         res.end("not found");
         return;
       }
-      const raw = await readStreamText(req, { maxBytes: MAX_SLACK_BODY_BYTES, label: "Slack request body" });
+      const raw = await readStreamBytes(req, { maxBytes: MAX_SLACK_BODY_BYTES, label: "Slack request body" });
       if (!verifySlackSignature(req, raw, signingSecret)) {
         await recordRequestError(root, { source_id: source.id, event_type: "slack_auth_failed", status: "blocked" });
         res.writeHead(401);
         res.end("unauthorized");
         return;
       }
-      const payload = JSON.parse(raw);
+      const payload = JSON.parse(new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(raw));
       if (payload.type === "url_verification") {
         res.writeHead(200, { "content-type": "text/plain" });
         res.end(payload.challenge || "");
@@ -101,8 +101,7 @@ export async function startSlackServer(root, source, options = {}) {
 }
 
 export function signSlackTestBody(body, signingSecret, timestamp = Math.floor(Date.now() / 1000)) {
-  const base = `v0:${timestamp}:${body}`;
-  const digest = createHmac("sha256", signingSecret).update(base).digest("hex");
+  const digest = createHmac("sha256", signingSecret).update(`v0:${timestamp}:`).update(body).digest("hex");
   return { timestamp: String(timestamp), signature: `v0=${digest}` };
 }
 
@@ -113,9 +112,7 @@ function verifySlackSignature(req, raw, signingSecret) {
   const skew = Math.abs(Math.floor(Date.now() / 1000) - Number(timestamp));
   if (!Number.isFinite(skew) || skew > MAX_SIGNATURE_SKEW_SECONDS) return false;
   const expected = signSlackTestBody(raw, signingSecret, timestamp).signature;
-  const actualBuffer = Buffer.from(String(signature));
-  const expectedBuffer = Buffer.from(expected);
-  return actualBuffer.length === expectedBuffer.length && timingSafeEqual(actualBuffer, expectedBuffer);
+  return timingSafeEqualString(signature, expected);
 }
 
 function slackTitle(event) {

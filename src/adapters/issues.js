@@ -3,7 +3,7 @@ import { createServer } from "node:http";
 import { makeItem } from "../models.js";
 import { resolveSecretRef } from "../secrets.js";
 import { storeRaw } from "../storage.js";
-import { readStreamText, timingSafeEqualString } from "../util.js";
+import { readStreamBytes, timingSafeEqualString } from "../util.js";
 import { receiveItem } from "../workflow.js";
 import { recordRequestError, requestErrorPayload } from "../request-errors.js";
 import { readBounded, resourceLimit } from "../resource-limits.js";
@@ -78,14 +78,14 @@ export async function startIssueWebhookServer(root, source, options = {}) {
         res.end("not found");
         return;
       }
-      const raw = await readStreamText(req, { maxBytes: MAX_ISSUE_BODY_BYTES, label: `${source.type} webhook request body` });
+      const raw = await readStreamBytes(req, { maxBytes: MAX_ISSUE_BODY_BYTES, label: `${source.type} webhook request body` });
       if (!verifyIssueRequest(req, raw, expectedToken, source.type, port)) {
         await recordRequestError(root, { source_id: source.id, event_type: `${source.type}_auth_failed`, status: "blocked" });
         res.writeHead(401);
         res.end("unauthorized");
         return;
       }
-      const payload = JSON.parse(raw);
+      const payload = JSON.parse(new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(raw));
       const item = await receiveItem(root, source, payload, normalizeIssuePayload, `${source.type}_webhook_received`);
       res.writeHead(202, { "content-type": "application/json" });
       res.end(JSON.stringify({ ok: true, item_id: item.id }));
@@ -125,6 +125,7 @@ export async function addGitHubIssueComment(source, action, item) {
   const response = await fetch(`https://api.github.com/repos/${repository}/issues/${issueNumber}/comments`, {
     signal: AbortSignal.timeout(timeout),
     method: "POST",
+    redirect: "manual",
     headers: {
       accept: "application/vnd.github+json",
       authorization: `Bearer ${token}`,
@@ -133,6 +134,10 @@ export async function addGitHubIssueComment(source, action, item) {
     },
     body
   });
+  if (response.status >= 300 && response.status < 400) {
+    await response.body?.cancel();
+    throw new Error(`GitHub comment failed: ${response.status}; redirect refused`);
+  }
   const payload = await boundedResponseJson(response, maxResponse);
   if (!response.ok) {
     throw new Error(`GitHub comment failed: ${response.status} ${payload.message || response.statusText}`);

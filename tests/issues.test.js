@@ -103,11 +103,11 @@ test("GitHub issue receiver accepts signed webhook payloads", async () => {
     await saveSources(root, [source]);
     const receiver = await startIssueWebhookServer(root, source, { port: 0 });
     try {
-      const body = JSON.stringify({
+      const body = Buffer.from(JSON.stringify({
         action: "opened",
-        issue: { id: 10, title: "Signed issue", body: "Webhook signed", user: { login: "octocat" } },
+        issue: { id: 10, title: "Signed issue", body: "Réception 📬", user: { login: "octocat" } },
         repository: { full_name: "acme/signed" }
-      });
+      }));
       const response = await fetch(receiver.url, {
         method: "POST",
         headers: { "x-hub-signature-256": signGitHubBody(body, "github-secret"), "content-type": "application/json" },
@@ -117,6 +117,7 @@ test("GitHub issue receiver accepts signed webhook payloads", async () => {
       const items = await listItems(root);
       assert.equal(items.length, 1);
       assert.equal(items[0].source_type, "github");
+      assert.equal(items[0].body, "Réception 📬");
 
       const rejected = await fetch(receiver.url, {
         method: "POST",
@@ -124,6 +125,15 @@ test("GitHub issue receiver accepts signed webhook payloads", async () => {
         body
       });
       assert.equal(rejected.status, 401);
+
+      const invalidUtf8 = Buffer.concat([Buffer.from('{"title":"'), Buffer.from([0xff]), Buffer.from('"}')]);
+      const malformed = await fetch(receiver.url, {
+        method: "POST",
+        headers: { "x-hub-signature-256": signGitHubBody(invalidUtf8, "github-secret") },
+        body: invalidUtf8
+      });
+      assert.equal(malformed.status, 400);
+      assert.equal((await listItems(root)).length, 1);
     } finally {
       await new Promise((resolve) => receiver.server.close(resolve));
     }
@@ -208,6 +218,15 @@ test("GitHub comment writeback bounds response bytes and request time", async (t
   };
   await assert.rejects(() => addGitHubIssueComment(source, action, item), /GitHub response exceeds 10 bytes/);
   assert.ok(signal instanceof AbortSignal);
+
+  const redirect = new Response("moved", { status: 307, headers: { location: "https://example.test/renamed" } });
+  globalThis.fetch = async (url, options) => {
+    assert.equal(url, "https://api.github.com/repos/acme/app/issues/7/comments");
+    assert.equal(options.redirect, "manual");
+    return redirect;
+  };
+  await assert.rejects(() => addGitHubIssueComment(source, action, item), /307; redirect refused/);
+  assert.equal(redirect.bodyUsed, true);
 
   globalThis.fetch = (url, options) => new Promise((resolve, reject) => {
     options.signal.addEventListener("abort", () => reject(options.signal.reason), { once: true });
